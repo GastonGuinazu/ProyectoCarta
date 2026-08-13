@@ -1,0 +1,59 @@
+@switch (resolutionStatus()) {
+  @case ('idle') {
+    <div class="flex min-h-screen items-center justify-center bg-neutral-50">
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+    </div>
+  }
+  @case ('resolving') {
+    <div class="flex min-h-screen items-center justify-center bg-neutral-50">
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+    </div>
+  }
+  @case ('notFound') {
+    <div class="flex min-h-screen flex-col items-center justify-center gap-2 bg-neutral-50 px-6 text-center">
+      <p class="text-lg font-bold text-neutral-900">No encontramos este local</p>
+      <p class="text-sm text-neutral-500">Revisá que el código QR o el link sean correctos.</p>
+    </div>
+  }
+  @case ('suspended') {
+    <div class="flex min-h-screen flex-col items-center justify-center gap-2 bg-neutral-50 px-6 text-center">
+      <p class="text-lg font-bold text-neutral-900">Este local está temporalmente inactivo</p>
+      <p class="text-sm text-neutral-500">Volvé a intentarlo más tarde.</p>
+    </div>
+  }
+  @case ('error') {
+    <div class="flex min-h-screen flex-col items-center justify-center gap-3 bg-neutral-50 px-6 text-center">
+      <p class="text-lg font-bold text-neutral-900">Algo salió mal</p>
+      <p class="text-sm text-neutral-500">No pudimos cargar el menú. Revisá tu conexión e intentá de nuevo.</p>
+      <button
+        type="button"
+        (click)="reload()"
+        class="mt-2 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white"
+      >
+        Reintentar
+      </button>
+    </div>
+  }
+  @case ('resolved') {
+    <div class="flex min-h-screen flex-col bg-neutral-50">
+      <header
+        class="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 text-white shadow-md"
+        [style.backgroundColor]="brandColor()"
+      >
+        @if (logoUrl()) {
+          <img [ngSrc]="logoUrl()!" [alt]="headerTitle()" width="36" height="36" class="rounded-full object-cover" />
+        }
+        <div class="flex flex-col leading-tight">
+          <span class="text-base font-bold">{{ headerTitle() }}</span>
+          @if (branchName() && branchName() !== headerTitle()) {
+            <span class="text-xs opacity-80">{{ branchName() }}</span>
+          }
+        </div>
+      </header>
+
+      <main class="flex-1">
+        <app-category-list />
+      </main>
+    </div>
+  }
+}

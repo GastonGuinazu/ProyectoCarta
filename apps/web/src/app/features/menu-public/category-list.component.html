@@ -1,0 +1,56 @@
+@if (isRoot() && syncStatus() === 'hydratingFromCache' && !hasMenuData()) {
+  <div class="grid grid-cols-2 gap-3 px-4 py-4 sm:grid-cols-3 lg:grid-cols-4">
+    @for (placeholder of skeletonPlaceholders; track placeholder) {
+      <div class="aspect-[3/4] animate-pulse rounded-2xl bg-neutral-200"></div>
+    }
+  </div>
+} @else {
+  @if (isRoot() && hasMenuData() && (syncStatus() === 'error' || syncStatus() === 'offline')) {
+    <p class="mx-4 mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+      @if (syncStatus() === 'offline') {
+        Estás sin conexión. Te mostramos la última versión del menú que guardamos.
+      } @else {
+        No pudimos actualizar el menú en este momento. Te mostramos la última versión guardada.
+      }
+    </p>
+  }
+
+  @if (effectiveCategories().length === 0) {
+    @if (isRoot()) {
+      <div class="flex flex-col items-center gap-2 px-6 py-16 text-center text-neutral-500">
+        @if (hasActiveAllergenFilter()) {
+          <p class="text-sm font-medium text-neutral-700">No encontramos productos con estos filtros.</p>
+          <p class="text-xs">Probá quitar algún alérgeno excluido para ver más opciones.</p>
+        } @else {
+          <p class="text-sm font-medium text-neutral-700">Este local todavía no publicó su menú.</p>
+          <p class="text-xs">Volvé a intentarlo en unos minutos.</p>
+        }
+      </div>
+    }
+  } @else {
+    <div class="flex flex-col gap-8" [class.px-4]="isRoot()" [class.py-4]="isRoot()">
+      @for (category of effectiveCategories(); track category.id) {
+        <section class="flex flex-col gap-3">
+          <header>
+            <h2 class="text-lg font-bold text-neutral-900">{{ categoryName(category) }}</h2>
+            @if (categoryDescription(category)) {
+              <p class="text-sm text-neutral-500">{{ categoryDescription(category) }}</p>
+            }
+          </header>
+
+          @if (category.products.length > 0) {
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              @for (product of category.products; track product.id) {
+                <app-product-card [product]="product" />
+              }
+            </div>
+          }
+
+          @if (category.children.length > 0) {
+            <app-category-list [categories]="category.children" />
+          }
+        </section>
+      }
+    </div>
+  }
+}

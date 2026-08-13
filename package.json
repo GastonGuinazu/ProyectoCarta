@@ -11,9 +11,14 @@
     "build:web": "npm run build --workspace=web",
     "build:api": "npm run build --workspace=api",
     "test:web": "npm run test --workspace=web",
-    "test:api": "npm run test --workspace=api"
+    "test:api": "npm run test --workspace=api",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "devDependencies": {
-    "prisma": "^6.19.2"
+    "prisma": "^6.19.2",
+    "tsx": "^4.23.12"
   }
 }
