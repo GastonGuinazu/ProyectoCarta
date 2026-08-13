@@ -1,0 +1,38 @@
+---
+description: Reglas estrictas de frontend Angular 19 (PWA de comensales + Panel Admin) para el SaaS de Menú Digital.
+globs: apps/web/**/*.ts,apps/web/**/*.html
+alwaysApply: false
+---
+
+# Frontend — Angular 19 + TailwindCSS
+
+## Stack obligatorio
+
+- **Angular 19** con **TypeScript estricto** (`strict: true`, sin `any` implícito, sin `// @ts-ignore` para evadir errores de tipos).
+- **TailwindCSS** como único sistema de estilos. No se permite CSS/SCSS a mano salvo casos puntuales imposibles de resolver con utilidades (ej. animaciones muy específicas), y deben quedar acotados a un archivo `*.css` co-ubicado con el componente.
+
+## Standalone Components y Signals — sin excepciones
+
+- Debes usar **exclusivamente Standalone Components** (`standalone: true`). Está prohibido crear o modificar `NgModule`s para organizar features.
+- Debes usar **Signals** (`signal`, `computed`, `effect`) para todo el estado local de componentes y servicios de estado en el cliente (ej. carrito visual, filtros de alérgenos activos, categoría seleccionada, estado de un formulario del admin).
+- Está **prohibido usar RxJS para modelar estado local**. RxJS queda reservado únicamente para:
+  - Llamadas HTTP (`HttpClient`) y su composición (`switchMap`, `debounceTime` en buscadores, etc.).
+  - Streams verdaderamente asíncronos externos (ej. WebSockets/Realtime de Supabase) que luego deben proyectarse a un `signal` con `toSignal()` antes de usarse en la plantilla o en lógica de componente.
+- Si detectas un `BehaviorSubject`/`Subject` usado solo para guardar estado local, debes reemplazarlo por `signal`.
+
+## Mobile-first y rendimiento extremo
+
+- Todo componente y layout debe diseñarse **mobile-first**: define primero el breakpoint base (móvil) en Tailwind y agrega variantes (`sm:`, `md:`, `lg:`) solo para adaptar a pantallas mayores. El comensal accede casi siempre desde el celular al escanear el QR.
+- Debes usar **lazy loading** por defecto para todas las rutas que no sean críticas para el primer render (usa `loadComponent`/rutas standalone con carga diferida). El bundle inicial del menú público debe mantenerse mínimo.
+- Optimiza imágenes con `NgOptimizedImage` (directiva `ngSrc`) para todo asset servido desde Cloudinary/Supabase Storage. No uses `<img src>` plano para imágenes de producto.
+- Evita `ChangeDetectionStrategy.Default` en componentes de listas grandes (catálogo de productos); usa `ChangeDetectionStrategy.OnPush` de forma consistente.
+
+## Prohibido: librerías de UI pesadas
+
+- Está **prohibido instalar y usar Angular Material, PrimeNG, NG-ZORRO o cualquier librería de componentes de UI pesada**. El objetivo es mantener el bundle al mínimo para una PWA mobile-first.
+- Todos los componentes de interfaz (botones, modales, inputs, tabs, cards, tooltips) deben construirse desde cero con Tailwind, siguiendo el estándar de `skill-ui-design.md` cuando aplique. Antes de crear un componente nuevo, revisa si ya existe uno equivalente reutilizable en la librería interna de componentes del proyecto.
+
+## PWA y offline
+
+- Todo nuevo recurso estático (assets del menú, íconos, fuentes) debe registrarse correctamente en la configuración del Service Worker (`ngsw-config.json`) siguiendo la estrategia de caché definida en `docs/architecture.md` (cache-first para assets estáticos, stale-while-revalidate para datos de menú).
+- No introduzcas dependencias de red bloqueantes (llamadas síncronas obligatorias) en el flujo de primer render del menú público; el menú debe poder mostrarse desde caché si la red falla.

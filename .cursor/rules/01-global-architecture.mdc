@@ -1,0 +1,34 @@
+---
+description: Arquitectura global del SaaS Multi-tenant de Menú Digital (Tenant/Sucursal/Menú/QR). Aplica siempre, a todo el monorepo.
+globs:
+alwaysApply: true
+---
+
+# Arquitectura Global — SaaS Multi-tenant de Menú Digital
+
+## Contexto del proyecto
+
+- Este es un **SaaS Multi-tenant**. Cada `Tenant` (restaurante/marca) tiene una o más `Sucursales`, cada una con su propio `Menú` accedido vía `QR`.
+- Jerarquía obligatoria: `Tenant -> Sucursal -> Menú -> QR`. Ninguna entidad de negocio (categoría, producto, combo, promo, analytics) puede existir sin estar asociada, directa o indirectamente, a un `tenant_id`.
+- Base de datos: **PostgreSQL** administrada vía **Prisma** como ORM único. No se permite acceso a la base de datos por fuera de Prisma (sin SQL crudo salvo excepción justificada y documentada).
+
+## Regla no negociable: aislamiento multi-tenant
+
+- Debes validar el `tenant_id` (y, cuando aplique, el `sucursalId`) en **toda** query, mutación, guard, middleware o servicio que toque datos de negocio. Nunca confíes en un `tenant_id` recibido solo desde el body/params del cliente sin cruzarlo contra el `tenant_id` resuelto desde el contexto de autenticación o desde la resolución del QR/subdominio.
+- Está prohibido escribir una query a la base de datos (Prisma) que filtre únicamente por `id` sin además filtrar por `tenant_id` en entidades multi-tenant, salvo en operaciones explícitamente públicas y de solo lectura (ej. resolución de menú público por QR).
+- Si vas a implementar un endpoint, repositorio o servicio nuevo y no hay certeza de cómo se resuelve o propaga el `tenant_id` en ese flujo, **debes preguntar antes de escribir código**, no asumir.
+
+## Prohibido: mocks, datos falsos y hardcodeo
+
+- Está prohibido generar datos mock, fixtures falsos o placeholders "de relleno" (nombres, precios, imágenes, textos) dentro de código de aplicación, salvo que se trate explícitamente de archivos de seed/testing solicitados y nombrados como tales.
+- Está prohibido hardcodear configuración: URLs, claves de API (Cloudinary, Supabase, JWT secrets), nombres de buckets, límites de planes, feature flags, etc. Todo debe provenir de variables de entorno (`.env` + validación de esquema) o de datos persistidos en la base de datos (ej. límites por plan en la tabla `Plan`).
+- Ningún valor de negocio (precios, límites, textos legales, configuración de Happy Hour) debe quedar embebido como constante en el código si conceptualmente pertenece a la base de datos.
+
+## Cuando hay incertidumbre arquitectónica
+
+- Si una decisión implica trade-offs no resueltos en `docs/architecture.md`, `docs/domain-modules.md` o `docs/features-spec.md` (ej. estrategia de aislamiento de tenant, esquema de una entidad nueva, contrato de un endpoint), **debes detenerte y preguntar** antes de escribir código. No improvises una convención nueva que contradiga la documentación existente.
+- Toda nueva decisión arquitectónica relevante debe reflejarse luego en los documentos de `docs/` correspondientes, no solo en el código.
+
+## Consistencia con la documentación
+
+- `docs/architecture.md`, `docs/domain-modules.md` y `docs/features-spec.md` son la fuente de verdad del diseño. Ante cualquier conflicto entre lo que pide un ticket/prompt puntual y esos documentos, señala la discrepancia en vez de resolverla en silencio.

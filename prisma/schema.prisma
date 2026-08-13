@@ -1,0 +1,898 @@
+// ============================================================================
+// ProyectoCarta — Esquema de Datos (Prisma / PostgreSQL)
+// SaaS Multi-Tenant de Menú Digital PWA para Restaurantes
+//
+// Fase de Diseño — Definición declarativa del modelo de datos.
+// Fuente de verdad conceptual: docs/domain-modules.md, docs/features-spec.md,
+// docs/architecture.md, docs/api-contracts.md, docs/backend-architecture.md.
+//
+// Convenciones:
+// - Modelos en PascalCase / campos en camelCase (lado Prisma).
+// - Tablas y columnas en snake_case en PostgreSQL (@@map / @map).
+// - Todo campo monetario se almacena en centavos (Int) — ver api-contracts.md §2.
+// - Todo campo traducible se modela como Json ({ "es": "...", "en": "..." }) — ver features-spec.md §6.
+// - Toda entidad de negocio tenant-scoped incluye tenantId + índice compuesto con tenantId,
+//   como Capa 1 de la defensa en profundidad descrita en docs/backend-architecture.md §4.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// DOMINIO: TENANT
+// (docs/domain-modules.md §2)
+// ============================================================================
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  TRIAL
+  CANCELLED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  YEARLY
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum RoleType {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+enum BranchOperationalStatus {
+  OPEN
+  CLOSED_TEMPORARILY
+  MAINTENANCE
+}
+
+/// Plan de suscripción y sus límites — nunca hardcodeado en código de aplicación
+/// (ver .cursor/rules/01-global-architecture.mdc).
+model Plan {
+  id                       String        @id @default(uuid())
+  name                     String
+  priceCents               Int           @map("price_cents")
+  currency                 String        @default("ARS")
+  billingPeriod            BillingPeriod @map("billing_period")
+  maxBranches              Int           @map("max_branches")
+  maxProducts              Int           @map("max_products")
+  maxStorageMb             Int           @map("max_storage_mb")
+  maxLanguages             Int           @map("max_languages")
+  webArEnabled             Boolean       @default(false) @map("web_ar_enabled")
+  customDomainEnabled      Boolean       @default(false) @map("custom_domain_enabled")
+  advancedAnalyticsEnabled Boolean       @default(false) @map("advanced_analytics_enabled")
+  rateLimitPerMinute       Int           @map("rate_limit_per_minute")
+  createdAt                DateTime      @default(now()) @map("created_at")
+  updatedAt                DateTime      @updatedAt @map("updated_at")
+
+  tenants Tenant[]
+
+  @@map("plans")
+}
+
+model Tenant {
+  id                String       @id @default(uuid())
+  slug              String       @unique
+  name              String
+  customDomain      String?      @unique @map("custom_domain")
+  defaultLanguage   String       @default("es") @map("default_language")
+  status            TenantStatus @default(TRIAL)
+  planId            String       @map("plan_id")
+  brandPrimaryColor String?      @map("brand_primary_color")
+  logoMediaAssetId  String?      @unique @map("logo_media_asset_id")
+  nextBillingAt     DateTime?    @map("next_billing_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  plan           Plan        @relation(fields: [planId], references: [id])
+  logoMediaAsset MediaAsset? @relation("TenantLogo", fields: [logoMediaAssetId], references: [id], onDelete: SetNull)
+
+  users                        User[]
+  roleAssignments              RoleAssignment[]
+  branches                     Branch[]
+  categories                   Category[]
+  categoryBranchAvailabilities CategoryBranchAvailability[]
+  products                     Product[]
+  productBranchAvailabilities  ProductBranchAvailability[]
+  productMedia                 ProductMedia[]
+  variantGroups                VariantGroup[]
+  variantOptions               VariantOption[]
+  combos                       Combo[]
+  comboItems                   ComboItem[]
+  comboBranchAvailabilities    ComboBranchAvailability[]
+  productAllergens             ProductAllergen[]
+  productDietaryTags           ProductDietaryTag[]
+  promos                       Promo[]
+  promoProductTargets          PromoProductTarget[]
+  promoCategoryTargets         PromoCategoryTarget[]
+  promoComboTargets            PromoComboTarget[]
+  promoBranches                PromoBranch[]
+  happyHours                   HappyHour[]
+  happyHourProductTargets      HappyHourProductTarget[]
+  happyHourCategoryTargets     HappyHourCategoryTarget[]
+  happyHourComboTargets        HappyHourComboTarget[]
+  happyHourBranches            HappyHourBranch[]
+  mediaAssets                  MediaAsset[]                 @relation("TenantMediaAssets")
+  processedVariants            ProcessedVariant[]
+  qrCodes                      QrCode[]
+  scanEvents                   ScanEvent[]
+  interactionEvents            InteractionEvent[]
+  aggregatedMetrics            AggregatedMetric[]
+
+  @@index([status])
+  @@map("tenants")
+}
+
+model User {
+  id                String     @id @default(uuid())
+  tenantId          String     @map("tenant_id")
+  fullName          String     @map("full_name")
+  email             String     @unique
+  passwordHash      String     @map("password_hash")
+  status            UserStatus @default(INVITED)
+  preferredLanguage String     @default("es") @map("preferred_language")
+  lastLoginAt       DateTime?  @map("last_login_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleAssignments     RoleAssignment[]
+  uploadedMediaAssets MediaAsset[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+/// Asignación de Rol de un Usuario. branchId nulo = rol de alcance TENANT (ej. Owner).
+model RoleAssignment {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+  branchId  String?  @map("branch_id")
+  role      RoleType
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId, branchId])
+  @@index([tenantId, branchId])
+  @@map("role_assignments")
+}
+
+model Branch {
+  id                String                  @id @default(uuid())
+  tenantId          String                  @map("tenant_id")
+  slug              String
+  name              String
+  address           String?
+  phone             String?
+  whatsapp          String?
+  timezone          String                  @default("America/Argentina/Buenos_Aires")
+  defaultLanguage   String?                 @map("default_language")
+  operationalStatus BranchOperationalStatus @default(OPEN) @map("operational_status")
+  scheduleJson      Json?                   @map("schedule_json") @db.JsonB
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  tenant                       Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roleAssignments              RoleAssignment[]
+  qrCodes                      QrCode[]
+  categoryBranchAvailabilities CategoryBranchAvailability[]
+  productBranchAvailabilities  ProductBranchAvailability[]
+  comboBranchAvailabilities    ComboBranchAvailability[]
+  promoBranches                PromoBranch[]
+  happyHourBranches            HappyHourBranch[]
+  scanEvents                   ScanEvent[]
+  interactionEvents            InteractionEvent[]
+  aggregatedMetrics            AggregatedMetric[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, operationalStatus])
+  @@map("branches")
+}
+
+/// Punto de acceso físico/digital al Menú (jerarquía Tenant -> Branch -> Menú -> QR, architecture.md §3.1).
+model QrCode {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  branchId  String   @map("branch_id")
+  code      String   @unique
+  label     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  scanEvents ScanEvent[]
+
+  @@index([tenantId, branchId])
+  @@map("qr_codes")
+}
+
+// ============================================================================
+// DOMINIO: CATALOG
+// (docs/domain-modules.md §3)
+// ============================================================================
+
+enum AvailabilityStatus {
+  AVAILABLE
+  OUT_OF_STOCK
+  DISCONTINUED
+}
+
+enum VariantSelectionType {
+  SINGLE
+  MULTIPLE
+}
+
+/// Categoría con jerarquía auto-referencial e ilimitada (features-spec.md §2).
+model Category {
+  id                     String   @id @default(uuid())
+  tenantId               String   @map("tenant_id")
+  parentId               String?  @map("parent_id")
+  slug                   String
+  name                   Json     @db.JsonB
+  description            Json?    @db.JsonB
+  imageMediaAssetId      String?  @map("image_media_asset_id")
+  order                  Int      @default(0)
+  visible                Boolean  @default(true)
+  availableInAllBranches Boolean  @default(true) @map("available_in_all_branches")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  tenant               Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent               Category?                    @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children             Category[]                   @relation("CategoryHierarchy")
+  imageMediaAsset      MediaAsset?                  @relation("CategoryImage", fields: [imageMediaAssetId], references: [id], onDelete: SetNull)
+  products             Product[]
+  branchAvailabilities CategoryBranchAvailability[]
+  promoTargets         PromoCategoryTarget[]
+  happyHourTargets     HappyHourCategoryTarget[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, parentId])
+  @@index([tenantId, order])
+  @@map("categories")
+}
+
+model CategoryBranchAvailability {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  categoryId String @map("category_id")
+  branchId   String @map("branch_id")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  branch   Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, branchId])
+  @@index([tenantId, branchId])
+  @@map("category_branch_availabilities")
+}
+
+model Product {
+  id                     String             @id @default(uuid())
+  tenantId               String             @map("tenant_id")
+  categoryId             String             @map("category_id")
+  slug                   String
+  name                   Json               @db.JsonB
+  description            Json?              @db.JsonB
+  basePriceCents         Int                @map("base_price_cents")
+  currency               String             @default("ARS")
+  sku                    String?
+  order                  Int                @default(0)
+  availability           AvailabilityStatus @default(AVAILABLE)
+  availableInAllBranches Boolean            @default(true) @map("available_in_all_branches")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  tenant               Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category             Category                    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variantGroups        VariantGroup[]
+  allergens            ProductAllergen[]
+  dietaryTags          ProductDietaryTag[]
+  media                ProductMedia[]
+  comboItems           ComboItem[]
+  branchAvailabilities ProductBranchAvailability[]
+  promoTargets         PromoProductTarget[]
+  happyHourTargets     HappyHourProductTarget[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, slug])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, availability])
+  @@map("products")
+}
+
+model ProductBranchAvailability {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  productId String @map("product_id")
+  branchId  String @map("branch_id")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branch  Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, branchId])
+  @@index([tenantId, branchId])
+  @@map("product_branch_availabilities")
+}
+
+/// Grupo de variantes de un Producto (ej. "Tamaño", "Extras") — domain-modules.md §3.2.
+model VariantGroup {
+  id            String               @id @default(uuid())
+  tenantId      String               @map("tenant_id")
+  productId     String               @map("product_id")
+  name          Json                 @db.JsonB
+  selectionType VariantSelectionType @map("selection_type")
+  required      Boolean              @default(false)
+  order         Int                  @default(0)
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+
+  tenant  Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options VariantOption[]
+
+  @@index([tenantId, productId])
+  @@map("variant_groups")
+}
+
+model VariantOption {
+  id              String  @id @default(uuid())
+  tenantId        String  @map("tenant_id")
+  variantGroupId  String  @map("variant_group_id")
+  name            Json    @db.JsonB
+  priceDeltaCents Int     @default(0) @map("price_delta_cents")
+  available       Boolean @default(true)
+  order           Int     @default(0)
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  variantGroup VariantGroup @relation(fields: [variantGroupId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, variantGroupId])
+  @@map("variant_options")
+}
+
+/// Combo: agrupación de Productos con precio especial explícito (features-spec.md §3.1).
+model Combo {
+  id                     String             @id @default(uuid())
+  tenantId               String             @map("tenant_id")
+  slug                   String
+  name                   Json               @db.JsonB
+  description            Json?              @db.JsonB
+  priceCents             Int                @map("price_cents")
+  currency               String             @default("ARS")
+  imageMediaAssetId      String?            @map("image_media_asset_id")
+  availability           AvailabilityStatus @default(AVAILABLE)
+  availableInAllBranches Boolean            @default(true) @map("available_in_all_branches")
+  startAt                DateTime?          @map("start_at")
+  endAt                  DateTime?          @map("end_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
+
+  tenant               Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  imageMediaAsset      MediaAsset?               @relation("ComboImage", fields: [imageMediaAssetId], references: [id], onDelete: SetNull)
+  items                ComboItem[]
+  branchAvailabilities ComboBranchAvailability[]
+  promoTargets         PromoComboTarget[]
+  happyHourTargets     HappyHourComboTarget[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, availability])
+  @@map("combos")
+}
+
+/// Tabla intermedia Combo <-> Product, con la cantidad de cada producto dentro del combo.
+model ComboItem {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  comboId   String @map("combo_id")
+  productId String @map("product_id")
+  quantity  Int    @default(1)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  combo   Combo   @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([comboId, productId])
+  @@index([tenantId, comboId])
+  @@map("combo_items")
+}
+
+model ComboBranchAvailability {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  comboId  String @map("combo_id")
+  branchId String @map("branch_id")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  combo  Combo  @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([comboId, branchId])
+  @@index([tenantId, branchId])
+  @@map("combo_branch_availabilities")
+}
+
+// ----------------------------------------------------------------------------
+// Catálogo estandarizado de plataforma: Alérgenos y Preferencias Dietéticas
+// (features-spec.md §5.1-5.2) — NO son tenant-scoped, son globales a la plataforma.
+// ----------------------------------------------------------------------------
+
+model Allergen {
+  id      String  @id @default(uuid())
+  code    String  @unique
+  name    Json    @db.JsonB
+  iconUrl String? @map("icon_url")
+
+  productAllergens ProductAllergen[]
+
+  @@map("allergens")
+}
+
+model DietaryTag {
+  id      String  @id @default(uuid())
+  code    String  @unique
+  name    Json    @db.JsonB
+  iconUrl String? @map("icon_url")
+
+  productDietaryTags ProductDietaryTag[]
+
+  @@map("dietary_tags")
+}
+
+/// Relación N-N Producto <-> Alérgeno.
+model ProductAllergen {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  productId  String @map("product_id")
+  allergenId String @map("allergen_id")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  allergen Allergen @relation(fields: [allergenId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, allergenId])
+  @@index([tenantId, allergenId])
+  @@map("product_allergens")
+}
+
+/// Relación N-N Producto <-> Preferencia Dietética.
+model ProductDietaryTag {
+  id           String @id @default(uuid())
+  tenantId     String @map("tenant_id")
+  productId    String @map("product_id")
+  dietaryTagId String @map("dietary_tag_id")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  dietaryTag DietaryTag @relation(fields: [dietaryTagId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, dietaryTagId])
+  @@index([tenantId, dietaryTagId])
+  @@map("product_dietary_tags")
+}
+
+// ============================================================================
+// DOMINIO: ENGAGEMENT
+// (docs/domain-modules.md §4, features-spec.md §3)
+// ============================================================================
+
+enum PromoDiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FIXED_PRICE
+}
+
+enum PromoStatus {
+  SCHEDULED
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+/// Promo con ventana de vigencia explícita (fecha/hora de inicio y fin) — features-spec.md §3.3.
+model Promo {
+  id                     String            @id @default(uuid())
+  tenantId               String            @map("tenant_id")
+  name                   Json              @db.JsonB
+  description            Json?             @db.JsonB
+  discountType           PromoDiscountType @map("discount_type")
+  discountPercentageBp   Int?              @map("discount_percentage_bp") // basis points, 2000 = 20.00%
+  discountAmountCents    Int?              @map("discount_amount_cents")
+  fixedPriceCents        Int?              @map("fixed_price_cents")
+  startAt                DateTime          @map("start_at")
+  endAt                  DateTime          @map("end_at")
+  priority               Int               @default(0)
+  status                 PromoStatus       @default(SCHEDULED)
+  availableInAllBranches Boolean           @default(true) @map("available_in_all_branches")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productTargets  PromoProductTarget[]
+  categoryTargets PromoCategoryTarget[]
+  comboTargets    PromoComboTarget[]
+  branches        PromoBranch[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, startAt, endAt])
+  @@map("promos")
+}
+
+model PromoProductTarget {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  promoId   String @map("promo_id")
+  productId String @map("product_id")
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promo   Promo   @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, productId])
+  @@index([tenantId, productId])
+  @@map("promo_product_targets")
+}
+
+model PromoCategoryTarget {
+  id         String @id @default(uuid())
+  tenantId   String @map("tenant_id")
+  promoId    String @map("promo_id")
+  categoryId String @map("category_id")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promo    Promo    @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, categoryId])
+  @@index([tenantId, categoryId])
+  @@map("promo_category_targets")
+}
+
+model PromoComboTarget {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  promoId  String @map("promo_id")
+  comboId  String @map("combo_id")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promo  Promo  @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  combo  Combo  @relation(fields: [comboId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, comboId])
+  @@index([tenantId, comboId])
+  @@map("promo_combo_targets")
+}
+
+model PromoBranch {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  promoId  String @map("promo_id")
+  branchId String @map("branch_id")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  promo  Promo  @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([promoId, branchId])
+  @@index([tenantId, branchId])
+  @@map("promo_branches")
+}
+
+/// Happy Hour: se activa/desactiva automáticamente por día de semana + rango horario
+/// (soporta rangos que cruzan la medianoche, ver features-spec.md §3.3).
+model HappyHour {
+  id                     String            @id @default(uuid())
+  tenantId               String            @map("tenant_id")
+  name                   Json              @db.JsonB
+  discountType           PromoDiscountType @map("discount_type")
+  discountPercentageBp   Int?              @map("discount_percentage_bp")
+  discountAmountCents    Int?              @map("discount_amount_cents")
+  fixedPriceCents        Int?              @map("fixed_price_cents")
+  daysOfWeek             DayOfWeek[]       @map("days_of_week")
+  startMinuteOfDay       Int               @map("start_minute_of_day") // 0-1439
+  endMinuteOfDay         Int               @map("end_minute_of_day") // 0-1439, puede ser < start (cruza medianoche)
+  priority               Int               @default(0)
+  enabled                Boolean           @default(true)
+  availableInAllBranches Boolean           @default(true) @map("available_in_all_branches")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
+
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productTargets  HappyHourProductTarget[]
+  categoryTargets HappyHourCategoryTarget[]
+  comboTargets    HappyHourComboTarget[]
+  branches        HappyHourBranch[]
+
+  @@index([tenantId, enabled])
+  @@map("happy_hours")
+}
+
+model HappyHourProductTarget {
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  happyHourId String @map("happy_hour_id")
+  productId   String @map("product_id")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  happyHour HappyHour @relation(fields: [happyHourId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([happyHourId, productId])
+  @@index([tenantId, productId])
+  @@map("happy_hour_product_targets")
+}
+
+model HappyHourCategoryTarget {
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  happyHourId String @map("happy_hour_id")
+  categoryId  String @map("category_id")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  happyHour HappyHour @relation(fields: [happyHourId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([happyHourId, categoryId])
+  @@index([tenantId, categoryId])
+  @@map("happy_hour_category_targets")
+}
+
+model HappyHourComboTarget {
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  happyHourId String @map("happy_hour_id")
+  comboId     String @map("combo_id")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  happyHour HappyHour @relation(fields: [happyHourId], references: [id], onDelete: Cascade)
+  combo     Combo     @relation(fields: [comboId], references: [id], onDelete: Cascade)
+
+  @@unique([happyHourId, comboId])
+  @@index([tenantId, comboId])
+  @@map("happy_hour_combo_targets")
+}
+
+model HappyHourBranch {
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
+  happyHourId String @map("happy_hour_id")
+  branchId    String @map("branch_id")
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  happyHour HappyHour @relation(fields: [happyHourId], references: [id], onDelete: Cascade)
+  branch    Branch    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([happyHourId, branchId])
+  @@index([tenantId, branchId])
+  @@map("happy_hour_branches")
+}
+
+// ============================================================================
+// DOMINIO: MEDIA & AR
+// (docs/domain-modules.md §5)
+// ============================================================================
+
+enum MediaFileType {
+  IMAGE
+  VIDEO
+}
+
+enum MediaPipelineStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}
+
+enum MediaVariantPurpose {
+  THUMBNAIL
+  DETAIL
+  AR_CUTOUT
+}
+
+enum MediaVariantFormat {
+  WEBP
+  AVIF
+  PNG
+}
+
+enum MediaRole {
+  PRIMARY
+  GALLERY
+}
+
+model MediaAsset {
+  id               String              @id @default(uuid())
+  tenantId         String              @map("tenant_id")
+  uploadedByUserId String?             @map("uploaded_by_user_id")
+  fileType         MediaFileType       @map("file_type")
+  originalUrl      String              @map("original_url")
+  fileSizeBytes    Int                 @map("file_size_bytes")
+  pipelineStatus   MediaPipelineStatus @default(PENDING) @map("pipeline_status")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant             @relation("TenantMediaAssets", fields: [tenantId], references: [id], onDelete: Cascade)
+  uploadedByUser    User?              @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  processedVariants ProcessedVariant[]
+  productMedia      ProductMedia[]
+  categoriesAsImage Category[]         @relation("CategoryImage")
+  combosAsImage     Combo[]            @relation("ComboImage")
+  tenantAsLogo      Tenant?            @relation("TenantLogo")
+
+  @@index([tenantId, pipelineStatus])
+  @@map("media_assets")
+}
+
+/// Versión derivada de un MediaAsset (thumbnail, detalle, recorte AR) — domain-modules.md §5.2.
+model ProcessedVariant {
+  id           String              @id @default(uuid())
+  tenantId     String              @map("tenant_id")
+  mediaAssetId String              @map("media_asset_id")
+  purpose      MediaVariantPurpose
+  format       MediaVariantFormat
+  width        Int
+  height       Int
+  url          String
+  createdAt    DateTime            @default(now()) @map("created_at")
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, mediaAssetId, purpose])
+  @@map("processed_variants")
+}
+
+/// Relación N-N Producto <-> MediaAsset, con rol (imagen principal / galería) y orden.
+model ProductMedia {
+  id           String    @id @default(uuid())
+  tenantId     String    @map("tenant_id")
+  productId    String    @map("product_id")
+  mediaAssetId String    @map("media_asset_id")
+  role         MediaRole @default(GALLERY)
+  order        Int       @default(0)
+
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product    Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  mediaAsset MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, mediaAssetId])
+  @@index([tenantId, productId, role])
+  @@map("product_media")
+}
+
+// ============================================================================
+// DOMINIO: ANALYTICS
+// (docs/domain-modules.md §6)
+// ============================================================================
+
+enum InteractionType {
+  CATEGORY_VIEW
+  PRODUCT_DETAIL_VIEW
+  AR_VIEW_CLICK
+  ALLERGEN_FILTER_APPLIED
+  LANGUAGE_CHANGED
+  PROMO_CLICK
+}
+
+enum AnalyticsEntityType {
+  PRODUCT
+  CATEGORY
+  PROMO
+  HAPPY_HOUR
+}
+
+enum AggregationDimensionType {
+  BRANCH
+  PRODUCT
+  CATEGORY
+  PROMO
+}
+
+enum AggregationPeriodType {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// Evento de escaneo de QR — sin PII, solo sesión anónima (features-spec.md §7.5).
+model ScanEvent {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  branchId   String   @map("branch_id")
+  qrCodeId   String?  @map("qr_code_id")
+  sessionId  String   @map("session_id")
+  deviceType String?  @map("device_type")
+  userAgent  String?  @map("user_agent")
+  occurredAt DateTime @map("occurred_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch            Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  qrCode            QrCode?            @relation(fields: [qrCodeId], references: [id], onDelete: SetNull)
+  interactionEvents InteractionEvent[]
+
+  @@index([tenantId, branchId, occurredAt])
+  @@index([tenantId, sessionId])
+  @@map("scan_events")
+}
+
+/// Evento de interacción del comensal dentro de una sesión (domain-modules.md §6.2).
+/// entityId se modela como referencia débil (String) dado su carácter polimórfico
+/// (Product | Category | Promo | HappyHour) — la integridad referencial de negocio
+/// se valida en la capa de aplicación (features-spec.md §7.5), no vía FK de base de datos.
+model InteractionEvent {
+  id              String               @id @default(uuid())
+  tenantId        String               @map("tenant_id")
+  branchId        String               @map("branch_id")
+  scanEventId     String?              @map("scan_event_id")
+  sessionId       String               @map("session_id")
+  interactionType InteractionType      @map("interaction_type")
+  entityType      AnalyticsEntityType? @map("entity_type")
+  entityId        String?              @map("entity_id")
+  viewDurationMs  Int?                 @map("view_duration_ms")
+  occurredAt      DateTime             @map("occurred_at")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  scanEvent ScanEvent? @relation(fields: [scanEventId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, branchId, occurredAt])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, sessionId])
+  @@map("interaction_events")
+}
+
+/// Métricas pre-agregadas para consulta rápida desde el dashboard del Panel Admin
+/// (domain-modules.md §6.2).
+model AggregatedMetric {
+  id                String                   @id @default(uuid())
+  tenantId          String                   @map("tenant_id")
+  branchId          String?                  @map("branch_id")
+  dimensionType     AggregationDimensionType @map("dimension_type")
+  dimensionId       String?                  @map("dimension_id")
+  periodType        AggregationPeriodType    @map("period_type")
+  periodStart       DateTime                 @map("period_start")
+  totalScans        Int                      @default(0) @map("total_scans")
+  totalProductViews Int                      @default(0) @map("total_product_views")
+  interactionRateBp Int                      @default(0) @map("interaction_rate_bp")
+  topProductId      String?                  @map("top_product_id")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dimensionType, dimensionId, periodType, periodStart])
+  @@index([tenantId, branchId, periodType, periodStart])
+  @@map("aggregated_metrics")
+}
