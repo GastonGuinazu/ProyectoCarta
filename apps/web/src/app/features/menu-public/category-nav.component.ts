@@ -4,12 +4,18 @@ import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@a
 import type { CategoryNode } from '../../core/models/menu.models';
 import { MenuStore } from '../../core/stores/menu.store';
 import { pickLocalizedText } from '../../utils/localized-text.utils';
-import { MENU_COMBOS_SECTION_ID, MENU_HAPPY_HOUR_SECTION_ID, menuCategorySectionId } from './menu-section-ids';
+import {
+  MENU_COMBOS_SECTION_ID,
+  MENU_HAPPY_HOUR_SECTION_ID,
+  MENU_STICKY_SCROLL_GAP_PX,
+  menuCategorySectionId,
+} from './menu-section-ids';
 
 /**
  * Chips horizontales de categorías (y Combos). El click hace smooth scroll
- * a la sección; `document.getElementById` solo corre en el handler de click
- * (nunca en constructor), así que no toca el DOM durante un eventual SSR.
+ * a la sección, descontando el alto del chrome sticky para no tapar el título
+ * ni los primeros platos. `document.getElementById` solo corre en el handler
+ * de click (nunca en constructor), así que no toca el DOM durante un eventual SSR.
  */
 @Component({
   selector: 'app-category-nav',
@@ -58,6 +64,25 @@ export class CategoryNavComponent {
 
   protected scrollToSection(sectionId: string): void {
     this.activeSectionId.set(sectionId);
-    this.document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const target = this.document.getElementById(sectionId);
+    if (!target) {
+      return;
+    }
+
+    const sticky = this.document.querySelector('[data-menu-sticky]');
+    const stickyHeight =
+      sticky instanceof HTMLElement ? sticky.getBoundingClientRect().height : 0;
+    const view = this.document.defaultView;
+    if (!view) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
+    const top =
+      view.scrollY +
+      target.getBoundingClientRect().top -
+      stickyHeight -
+      MENU_STICKY_SCROLL_GAP_PX;
+    view.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
   }
 }

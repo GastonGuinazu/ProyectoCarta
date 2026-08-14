@@ -111,7 +111,11 @@
         </div>
       }
 
-      <div class="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur-sm">
+      <div
+        #stickyChrome
+        data-menu-sticky
+        class="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur-sm"
+      >
         <app-category-nav />
         <app-dish-search />
         <app-filter-bar />
@@ -119,7 +123,11 @@
 
       <main class="flex-1">
         @if (happyHourProducts().length > 0) {
-          <section [id]="happyHourSectionId" class="scroll-mt-36 px-4 pt-4">
+          <section
+            [id]="happyHourSectionId"
+            class="px-4 pt-4"
+            style="scroll-margin-top: var(--menu-sticky-offset)"
+          >
             <h2 class="mb-3 text-lg font-bold text-neutral-900">Happy Hour</h2>
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               @for (product of happyHourProducts(); track product.id) {
@@ -130,7 +138,11 @@
         }
 
         @if (filteredCombos().length > 0) {
-          <section [id]="combosSectionId" class="scroll-mt-36 px-4 pt-4">
+          <section
+            [id]="combosSectionId"
+            class="px-4 pt-4"
+            style="scroll-margin-top: var(--menu-sticky-offset)"
+          >
             <h2 class="mb-3 text-lg font-bold text-neutral-900">Combos</h2>
             <div class="flex flex-col gap-3">
               @for (combo of filteredCombos(); track combo.id) {

@@ -30,7 +30,11 @@
   } @else {
     <div class="flex flex-col gap-8" [class.px-4]="isRoot()" [class.py-4]="isRoot()">
       @for (category of effectiveCategories(); track category.id) {
-        <section class="flex flex-col gap-3" [attr.id]="isRoot() ? sectionId(category.id) : null" [class.scroll-mt-36]="isRoot()">
+        <section
+          class="flex flex-col gap-3"
+          [attr.id]="isRoot() ? sectionId(category.id) : null"
+          [style.scroll-margin-top]="isRoot() ? 'var(--menu-sticky-offset)' : null"
+        >
           <header>
             <h2 class="text-lg font-bold text-neutral-900">{{ categoryName(category) }}</h2>
             @if (categoryDescription(category)) {
