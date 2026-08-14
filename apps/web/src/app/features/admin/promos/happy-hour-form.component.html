@@ -1,0 +1,153 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5">
+    <a routerLink="/admin/promos" class="inline-flex min-h-11 items-center text-sm font-medium text-neutral-600 hover:text-neutral-900">
+      Volver a promos
+    </a>
+    <h1 class="mt-2 text-lg font-bold text-neutral-900">{{ pageTitle() }}</h1>
+    <p class="mt-1 text-sm text-neutral-500">
+      Se enciende solo en esos días y horario, según la
+      <a routerLink="/admin/settings" class="font-medium text-neutral-800 underline-offset-2 hover:underline">zona horaria de la sucursal</a>.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="flex justify-center py-16">
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+    </div>
+  } @else if (loadError()) {
+    <p class="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{{ loadError() }}</p>
+  } @else {
+    <form class="max-w-xl rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+      <fieldset class="flex flex-col gap-4" [disabled]="saving()">
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Nombre</span>
+          <input type="text" formControlName="name" maxlength="120" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2" />
+        </label>
+
+        <label class="flex min-h-11 cursor-pointer items-center gap-3">
+          <input type="checkbox" formControlName="enabled" class="h-4 w-4 accent-neutral-900" />
+          <span class="text-sm text-neutral-800">Encendido</span>
+        </label>
+
+        <div>
+          <p class="mb-2 text-sm font-medium text-neutral-700">Días</p>
+          <div class="flex flex-wrap gap-2">
+            @for (day of days; track day.id) {
+              <button
+                type="button"
+                class="min-h-11 rounded-full px-3 text-xs font-semibold ring-1"
+                [class.bg-neutral-900]="isDaySelected(day.id)"
+                [class.text-white]="isDaySelected(day.id)"
+                [class.text-neutral-700]="!isDaySelected(day.id)"
+                [class.ring-neutral-200]="!isDaySelected(day.id)"
+                (click)="toggleDay(day.id)"
+              >
+                {{ day.label }}
+              </button>
+            }
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Desde</span>
+            <input type="time" formControlName="startTime" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2" />
+          </label>
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Hasta</span>
+            <input type="time" formControlName="endTime" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2" />
+          </label>
+        </div>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Tipo de descuento</span>
+          <select formControlName="discountType" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2">
+            <option value="PERCENTAGE">Porcentaje</option>
+            <option value="FIXED_AMOUNT">Monto fijo</option>
+            <option value="FIXED_PRICE">Precio fijo</option>
+          </select>
+        </label>
+
+        @if (form.controls.discountType.value === 'PERCENTAGE') {
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Porcentaje</span>
+            <input type="number" formControlName="percent" min="0.01" max="100" step="0.01" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2" />
+          </label>
+        } @else {
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">
+              {{ form.controls.discountType.value === 'FIXED_AMOUNT' ? 'Monto a descontar' : 'Precio promocional' }}
+            </span>
+            <input type="number" formControlName="amount" min="0" step="0.01" class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2" />
+          </label>
+        }
+
+        <div>
+          <p class="mb-2 text-sm font-medium text-neutral-700">Platos</p>
+          <input
+            type="search"
+            class="mb-2 min-h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            placeholder="Buscar plato…"
+            [value]="productQuery()"
+            (input)="onProductQuery($event)"
+          />
+          <div class="max-h-56 overflow-y-auto rounded-xl border border-neutral-200 p-2">
+            @if (visibleProducts().length === 0) {
+              <p class="px-2 py-3 text-sm text-neutral-500">No hay platos con ese nombre.</p>
+            }
+            @for (product of visibleProducts(); track product.id) {
+              <label class="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-neutral-50">
+                <input type="checkbox" class="h-4 w-4 accent-neutral-900" [checked]="isProductSelected(product.id)" (change)="toggleProduct(product.id)" />
+                <span class="text-sm text-neutral-800">{{ productLabel(product) }}</span>
+              </label>
+            }
+          </div>
+        </div>
+
+        <div>
+          <p class="mb-2 text-sm font-medium text-neutral-700">O toda una categoría</p>
+          <input
+            type="search"
+            class="mb-2 min-h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            placeholder="Buscar categoría…"
+            [value]="categoryQuery()"
+            (input)="onCategoryQuery($event)"
+          />
+          <div class="max-h-40 overflow-y-auto rounded-xl border border-neutral-200 p-2">
+            @if (visibleCategories().length === 0) {
+              <p class="px-2 py-3 text-sm text-neutral-500">No hay categorías con ese nombre.</p>
+            }
+            @for (category of visibleCategories(); track category.id) {
+              <label class="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-2 hover:bg-neutral-50">
+                <input type="checkbox" class="h-4 w-4 accent-neutral-900" [checked]="isCategorySelected(category.id)" (change)="toggleCategory(category.id)" />
+                <span class="text-sm text-neutral-800">{{ categoryLabel(category) }}</span>
+              </label>
+            }
+          </div>
+        </div>
+
+        @if (overlappingOffers().length > 0) {
+          <p class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            Estos platos o categorías ya tienen otra oferta
+            (@for (offer of overlappingOffers(); track offer.id; let last = $last) {
+              {{ overlapName(offer) }}@if (!last) {, }
+            }).
+            En la carta gana una sola: la de más prioridad; si empatan, la más específica; si siguen empatando, la más nueva.
+            El Happy Hour arranca con más prioridad que una promo, para que durante el horario gane este descuento.
+          </p>
+        }
+      </fieldset>
+
+      @if (saveError()) {
+        <p class="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{{ saveError() }}</p>
+      }
+
+      <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <a routerLink="/admin/promos" class="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100">Cancelar</a>
+        <button type="submit" class="min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white disabled:opacity-60" [disabled]="saving()">
+          {{ saving() ? 'Guardando…' : isEdit() ? 'Guardar cambios' : 'Crear Happy Hour' }}
+        </button>
+      </div>
+    </form>
+  }
+</section>

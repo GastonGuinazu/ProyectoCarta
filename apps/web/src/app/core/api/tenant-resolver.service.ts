@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Subject, catchError, of, switchMap, tap } from 'rxjs';
 
-import type { BranchInfo } from '../models/tenant.models';
+import type { BranchInfo, TenantBranding } from '../models/tenant.models';
 import type {
   ActivePromotion,
   AllergenTag,
@@ -24,6 +24,7 @@ import type {
   ProductApiModel,
   ProductVariantGroupApiModel,
   PublicMenuBranchApiModel,
+  PublicMenuTenantApiModel,
 } from '../models/public-menu-response.model';
 import { extractApiErrorCode } from '../../utils/api-error.utils';
 import { MenuStore } from '../stores/menu.store';
@@ -81,7 +82,7 @@ export class TenantResolverService {
     return this.menuApiService.fetchPublicMenu(request.tenantSlug, request.branchSlug).pipe(
       tap((response) => {
         this.tenantStore.setResolved({
-          tenant: null,
+          tenant: mapTenant(response.tenant),
           branch: mapBranch(response.branch),
           features: null,
         });
@@ -150,6 +151,16 @@ export class TenantResolverService {
  * exacta de la respuesta HTTP a la forma que consumen los Stores cuando el
  * contrato evolucione (ej. `meta`, `tenant.branding`).
  */
+function mapTenant(tenant: PublicMenuTenantApiModel): TenantBranding {
+  return {
+    id: tenant.id,
+    slug: tenant.slug,
+    name: tenant.name,
+    primaryColor: tenant.branding.primaryColor,
+    logoUrl: tenant.branding.logoUrl,
+  };
+}
+
 function mapBranch(branch: PublicMenuBranchApiModel): BranchInfo {
   return {
     id: branch.id,
@@ -159,6 +170,8 @@ function mapBranch(branch: PublicMenuBranchApiModel): BranchInfo {
     address: branch.address,
     phone: branch.phone,
     whatsapp: branch.whatsapp,
+    instagram: branch.instagram,
+    bannerUrl: branch.bannerUrl,
     operationalStatus: branch.operationalStatus,
   };
 }
@@ -197,8 +210,15 @@ function mapProduct(product: ProductApiModel): ProductSummary {
     // de la estructura. Costo de CPU despreciable (arrays chicos, primitivos).
     allergenIds: [...product.allergenIds],
     dietaryTagIds: [...product.dietaryTagIds],
+    servedStartMinuteOfDay: product.servedStartMinuteOfDay ?? null,
+    servedEndMinuteOfDay: product.servedEndMinuteOfDay ?? null,
+    outsideServingHours: product.outsideServingHours === true,
     images: { ...product.images },
-    webAr: { ...product.webAr },
+    webAr: {
+      enabled: product.webAr.enabled,
+      assetUrl: product.webAr.assetUrl,
+      modelUrl: product.webAr.modelUrl ?? null,
+    },
     variantGroups: product.variantGroups.map(mapVariantGroup),
     activePromotion: mapActivePromotion(product.activePromotion),
   };

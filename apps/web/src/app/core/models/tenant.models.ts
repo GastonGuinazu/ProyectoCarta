@@ -23,6 +23,8 @@ export interface BranchInfo {
   readonly address: string | null;
   readonly phone: string | null;
   readonly whatsapp: string | null;
+  readonly instagram: string | null;
+  readonly bannerUrl: string | null;
   readonly operationalStatus: BranchOperationalStatus;
 }
 

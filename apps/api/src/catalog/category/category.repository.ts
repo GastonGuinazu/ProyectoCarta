@@ -1,10 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import {
   TENANT_PRISMA_CLIENT,
   type LocalizedText,
   type TenantScopedPrismaClient,
 } from '../../core';
 import type { CategoryRow } from './category-row.type';
+
+export interface AdminCategoryRecord {
+  readonly id: string;
+  readonly name: LocalizedText;
+  readonly order: number;
+  readonly productCount: number;
+  readonly childCount: number;
+}
 
 /**
  * Única capa autorizada a hablar con Prisma para el modelo `Category`
@@ -65,4 +74,172 @@ export class CategoryRepository {
         category.branchAvailabilities.length > 0,
     }));
   }
+
+  async findIdByTenant(
+    tenantId: string,
+    categoryId: string,
+  ): Promise<string | null> {
+    const category = await this.prisma.category.findFirst({
+      where: { tenantId, id: categoryId },
+      select: { id: true },
+    });
+    return category?.id ?? null;
+  }
+
+  async findAdminSummaries(
+    tenantId: string,
+  ): Promise<readonly AdminCategoryRecord[]> {
+    const categories = await this.prisma.category.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        order: true,
+        _count: { select: { products: true, children: true } },
+      },
+      orderBy: [{ order: 'asc' }, { id: 'asc' }],
+    });
+    return categories.map(toAdminCategoryRecord);
+  }
+
+  async findAdminById(
+    tenantId: string,
+    categoryId: string,
+  ): Promise<AdminCategoryRecord | null> {
+    const category = await this.prisma.category.findFirst({
+      where: { tenantId, id: categoryId },
+      select: {
+        id: true,
+        name: true,
+        order: true,
+        _count: { select: { products: true, children: true } },
+      },
+    });
+    return category ? toAdminCategoryRecord(category) : null;
+  }
+
+  async findIdsByTenant(tenantId: string): Promise<readonly string[]> {
+    const categories = await this.prisma.category.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    return categories.map((category) => category.id);
+  }
+
+  async findIdBySlug(tenantId: string, slug: string): Promise<string | null> {
+    const category = await this.prisma.category.findFirst({
+      where: { tenantId, slug },
+      select: { id: true },
+    });
+    return category?.id ?? null;
+  }
+
+  async findExistingIds(
+    tenantId: string,
+    ids: readonly string[],
+  ): Promise<readonly string[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.category.findMany({
+      where: { tenantId, id: { in: [...ids] } },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async findMaxOrder(tenantId: string): Promise<number> {
+    const aggregate = await this.prisma.category.aggregate({
+      where: { tenantId },
+      _max: { order: true },
+    });
+    return aggregate._max.order ?? -1;
+  }
+
+  async createAdmin(
+    tenantId: string,
+    input: {
+      readonly slug: string;
+      readonly name: LocalizedText;
+      readonly order: number;
+    },
+  ): Promise<AdminCategoryRecord> {
+    const category = await this.prisma.category.create({
+      data: {
+        tenantId,
+        slug: input.slug,
+        name: input.name,
+        order: input.order,
+      },
+      select: {
+        id: true,
+        name: true,
+        order: true,
+        _count: { select: { products: true, children: true } },
+      },
+    });
+    return toAdminCategoryRecord(category);
+  }
+
+  async updateAdmin(
+    tenantId: string,
+    categoryId: string,
+    name: LocalizedText,
+  ): Promise<AdminCategoryRecord> {
+    const category = await this.prisma.category.update({
+      where: { id: categoryId, tenantId },
+      data: { name },
+      select: {
+        id: true,
+        name: true,
+        order: true,
+        _count: { select: { products: true, children: true } },
+      },
+    });
+    return toAdminCategoryRecord(category);
+  }
+
+  async deleteAdmin(tenantId: string, categoryId: string): Promise<void> {
+    await this.prisma.category.delete({
+      where: { id: categoryId, tenantId },
+    });
+  }
+
+  /**
+   * Reescribe `order` (posición visual) de las categorías indicadas en una sola
+   * transacción. El índice en `categoryIds` es el nuevo `order` (0-based).
+   * Cada update filtra por `tenantId` además del `id`.
+   */
+  async reorderAdmin(
+    tenantId: string,
+    categoryIds: readonly string[],
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      categoryIds.map((id, index) =>
+        this.prisma.category.update({
+          where: { id, tenantId },
+          data: { order: index },
+        }),
+      ),
+    );
+  }
+}
+
+type AdminCategoryPayload = {
+  readonly id: string;
+  readonly name: Prisma.JsonValue;
+  readonly order: number;
+  readonly _count: { readonly products: number; readonly children: number };
+};
+
+function toAdminCategoryRecord(
+  category: AdminCategoryPayload,
+): AdminCategoryRecord {
+  return {
+    id: category.id,
+    name: category.name as LocalizedText,
+    order: category.order,
+    productCount: category._count.products,
+    childCount: category._count.children,
+  };
 }

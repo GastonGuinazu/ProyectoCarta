@@ -4,6 +4,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "prebuild": "node scripts/write-web-api-base.mjs",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
@@ -18,8 +19,10 @@
     "@angular/platform-browser-dynamic": "^19.2.0",
     "@angular/router": "^19.2.0",
     "@angular/service-worker": "^19.2.0",
+    "@google/model-viewer": "^4.3.1",
     "rxjs": "^7.8.2",
     "tslib": "^2.3.0",
+    "uqr": "^0.1.3",
     "zone.js": "~0.15.0"
   },
   "devDependencies": {

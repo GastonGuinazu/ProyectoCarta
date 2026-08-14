@@ -24,3 +24,40 @@ export function pickLocalizedText(text: LocalizedText, preferredLocale = 'es'): 
   const firstAvailable = Object.values(text)[0];
   return firstAvailable ?? '';
 }
+
+/**
+ * Coincide contra cualquier traducción del `LocalizedText` (el comensal puede
+ * buscar en el idioma visible o en otro publicado). Cadena vacía = match.
+ */
+export function localizedTextMatches(
+  text: LocalizedText | null | undefined,
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) {
+    return true;
+  }
+  if (!text) {
+    return false;
+  }
+  return Object.values(text).some((value) => value.toLowerCase().includes(needle));
+}
+
+/**
+ * Actualiza (o crea) la clave de idioma en un `LocalizedText`. Si no hay valor
+ * en `es` (idioma por defecto del tenant en este producto), lo rellena para
+ * satisfacer la validación del backend.
+ */
+export function upsertLocalizedText(
+  existing: LocalizedText | null | undefined,
+  language: string,
+  value: string,
+): LocalizedText {
+  const trimmed = value.trim();
+  const next: LocalizedText = { ...(existing ?? {}) };
+  next[language] = trimmed;
+  if (!next['es']) {
+    next['es'] = trimmed;
+  }
+  return next;
+}

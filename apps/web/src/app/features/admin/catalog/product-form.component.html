@@ -1,0 +1,679 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5">
+    <a
+      routerLink="/admin/catalog"
+      class="inline-flex min-h-11 items-center text-sm font-medium text-neutral-600 hover:text-neutral-900"
+    >
+      Volver al catálogo
+    </a>
+    <h1 class="mt-2 text-lg font-bold text-neutral-900">{{ pageTitle() }}</h1>
+    <p class="mt-1 text-sm text-neutral-500">
+      Completá los datos del producto. El precio se guarda en centavos.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="flex justify-center py-16">
+      <div
+        class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+      ></div>
+    </div>
+  } @else if (loadError()) {
+    <p class="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+      {{ loadError() }}
+    </p>
+  } @else {
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <form
+        class="min-w-0 flex-1 rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6"
+        [formGroup]="form"
+        (ngSubmit)="onSubmit()"
+        novalidate
+      >
+        <fieldset class="flex flex-col gap-4" [disabled]="saving()">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Nombre</span>
+            <input
+              type="text"
+              formControlName="name"
+              maxlength="120"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+              [class.border-rose-400]="form.controls.name.touched && form.controls.name.invalid"
+            />
+            @if (form.controls.name.touched && form.controls.name.hasError('required')) {
+              <span class="text-xs text-rose-600">El nombre es obligatorio.</span>
+            }
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Descripción</span>
+            <textarea
+              formControlName="description"
+              rows="4"
+              maxlength="2000"
+              class="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            ></textarea>
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Precio</span>
+            <input
+              type="number"
+              formControlName="price"
+              min="0"
+              step="0.01"
+              inputmode="decimal"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+              [class.border-rose-400]="form.controls.price.touched && form.controls.price.invalid"
+            />
+            <span class="text-xs text-neutral-500">
+              Precio de lista. El descuento de una promo no cambia este valor.
+            </span>
+            @if (winningOffer(); as offer) {
+              <p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                En la carta ahora:
+                <span class="font-semibold">{{ offerPriceLabel(offer) }}</span>
+                · {{ offerName(offer) }}
+              </p>
+            }
+            @if (form.controls.price.touched && form.controls.price.invalid) {
+              <span class="text-xs text-rose-600">Ingresá un precio válido (0 o más).</span>
+            }
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Categoría</span>
+            <select
+              formControlName="categoryId"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+              [class.border-rose-400]="
+                form.controls.categoryId.touched && form.controls.categoryId.invalid
+              "
+            >
+              <option value="">Seleccioná una categoría</option>
+              @for (category of categories(); track category.id) {
+                <option [value]="category.id">{{ categoryLabel(category) }}</option>
+              }
+            </select>
+            @if (form.controls.categoryId.touched && form.controls.categoryId.hasError('required')) {
+              <span class="text-xs text-rose-600">La categoría es obligatoria.</span>
+            }
+            @if (categories().length === 0) {
+              <span class="text-xs text-neutral-500">
+                Todavía no hay categorías en este restaurante.
+              </span>
+            }
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Estado</span>
+            <select
+              formControlName="availability"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            >
+              @for (option of availabilityOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </label>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Horario en que se sirve</span>
+            <p class="text-xs text-neutral-500">
+              Opcional. Fuera de este rango la carta lo muestra atenuado como “Fuera de horario”.
+              Las horas son las de la sucursal
+              <a routerLink="/admin/settings" class="font-medium text-neutral-800 underline-offset-2 hover:underline">
+                (Configuración → zona horaria)
+              </a>, no las del celular del comensal.
+            </p>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-neutral-500">Desde</span>
+                <input
+                  type="time"
+                  formControlName="servedStart"
+                  class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+                />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-neutral-500">Hasta</span>
+                <input
+                  type="time"
+                  formControlName="servedEnd"
+                  class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+                />
+              </label>
+            </div>
+            @if (form.touched && form.hasError('servingHoursPair')) {
+              <span class="text-xs text-rose-600">Completá ambas horas o dejá las dos vacías.</span>
+            }
+            @if (form.touched && form.hasError('servingHoursSame')) {
+              <span class="text-xs text-rose-600">La hora de fin tiene que ser distinta a la de inicio.</span>
+            }
+            <span class="text-xs text-neutral-400">
+              A la hora de fin ya no se sirve. Podés cruzar medianoche (ej. 22:00–02:00).
+            </span>
+          </div>
+
+          <fieldset class="flex flex-col gap-2">
+            <legend class="text-sm font-medium text-neutral-700">Alérgenos</legend>
+            <p class="text-xs text-neutral-500">
+              Marcalos para que el filtro de la carta oculte este plato si el comensal los excluye.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              @for (tag of allergens(); track tag.id) {
+                <button
+                  type="button"
+                  class="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold"
+                  [class.bg-neutral-900]="isAllergenSelected(tag.id)"
+                  [class.text-white]="isAllergenSelected(tag.id)"
+                  [class.shadow-sm]="isAllergenSelected(tag.id)"
+                  [class.bg-neutral-100]="!isAllergenSelected(tag.id)"
+                  [class.text-neutral-500]="!isAllergenSelected(tag.id)"
+                  [class.ring-1]="!isAllergenSelected(tag.id)"
+                  [class.ring-neutral-200]="!isAllergenSelected(tag.id)"
+                  [attr.aria-pressed]="isAllergenSelected(tag.id)"
+                  (click)="toggleAllergen(tag.id)"
+                >
+                  @if (isAllergenSelected(tag.id)) {
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+                    </svg>
+                  }
+                  {{ tagLabel(tag) }}
+                </button>
+              }
+            </div>
+          </fieldset>
+
+          <fieldset class="flex flex-col gap-2">
+            <legend class="text-sm font-medium text-neutral-700">Dietas</legend>
+            <p class="text-xs text-neutral-500">
+              Preferencias que cumple el plato (vegano, sin TACC, etc.). El filtro de la carta las usa.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              @for (tag of dietaryTags(); track tag.id) {
+                <button
+                  type="button"
+                  class="inline-flex min-h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold"
+                  [class.bg-neutral-900]="isDietaryTagSelected(tag.id)"
+                  [class.text-white]="isDietaryTagSelected(tag.id)"
+                  [class.shadow-sm]="isDietaryTagSelected(tag.id)"
+                  [class.bg-neutral-100]="!isDietaryTagSelected(tag.id)"
+                  [class.text-neutral-500]="!isDietaryTagSelected(tag.id)"
+                  [class.ring-1]="!isDietaryTagSelected(tag.id)"
+                  [class.ring-neutral-200]="!isDietaryTagSelected(tag.id)"
+                  [attr.aria-pressed]="isDietaryTagSelected(tag.id)"
+                  (click)="toggleDietaryTag(tag.id)"
+                >
+                  @if (isDietaryTagSelected(tag.id)) {
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+                    </svg>
+                  }
+                  {{ tagLabel(tag) }}
+                </button>
+              }
+            </div>
+          </fieldset>
+        </fieldset>
+
+        @if (saveError()) {
+          <p class="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ saveError() }}
+          </p>
+        }
+
+        <div class="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <a
+            routerLink="/admin/catalog"
+            class="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          >
+            Cancelar
+          </a>
+          <button
+            type="submit"
+            class="min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            [disabled]="saving() || loading()"
+          >
+            {{ submitLabel() }}
+          </button>
+        </div>
+      </form>
+
+      <aside class="flex w-full flex-col gap-4 lg:w-72 lg:shrink-0">
+        <div
+          class="relative flex min-h-56 flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white p-6 text-center transition-colors"
+          [class.border-neutral-900]="isDragOver() === 'presentation' && canUpload()"
+          [class.bg-neutral-50]="isDragOver() === 'presentation' && canUpload()"
+          [class.border-neutral-200]="isDragOver() !== 'presentation' || !canUpload()"
+          [class.opacity-60]="!isEdit()"
+          (dragover)="onDragOver($event, 'presentation')"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event, 'presentation')"
+        >
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Imagen de presentación
+          </p>
+          @if (uploading() && uploadingSlot() === 'presentation') {
+            <div class="flex w-full flex-col items-center gap-3">
+              <div
+                class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+              ></div>
+              <p class="text-sm font-medium text-neutral-600">Subiendo… {{ uploadProgress() }}%</p>
+              <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div
+                  class="h-full rounded-full bg-neutral-900 transition-[width]"
+                  [style.width.%]="uploadProgress()"
+                ></div>
+              </div>
+            </div>
+          } @else if (removingSlot() === 'presentation') {
+            <div class="flex w-full flex-col items-center gap-3">
+              <div
+                class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+              ></div>
+              <p class="text-sm font-medium text-neutral-600">Quitando imagen…</p>
+            </div>
+          } @else {
+            @if (imagePreview(); as preview) {
+              <img
+                [src]="preview.url"
+                alt="Imagen de presentación del producto"
+                class="mb-3 max-h-40 w-full rounded-xl bg-neutral-50 object-contain"
+              />
+              @if (canUpload()) {
+                <div class="mt-1 flex flex-col items-center gap-2">
+                  <label class="cursor-pointer text-xs font-semibold text-neutral-700 underline">
+                    Reemplazar imagen
+                    <input
+                      type="file"
+                      class="sr-only"
+                      accept=".jpg,.jpeg,.png,.webp"
+                      (change)="onFileSelected($event, 'presentation')"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                    (click)="askRemove('presentation')"
+                  >
+                    Quitar imagen
+                  </button>
+                </div>
+              }
+            } @else {
+            <svg
+              class="mb-3 h-10 w-10 text-neutral-300"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3 16.5 8 11l3 3 5-6 5 6.5"
+              />
+              <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
+            </svg>
+            @if (isEdit()) {
+              <p class="text-sm font-medium text-neutral-700">Foto del plato para el menú</p>
+              <p class="mt-1 text-xs text-neutral-400">
+                Obligatoria para listar el producto. JPG, PNG o WebP (10 MB).
+              </p>
+              <label
+                class="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-full bg-neutral-900 px-4 text-xs font-semibold text-white"
+              >
+                Elegir imagen
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept=".jpg,.jpeg,.png,.webp"
+                  (change)="onFileSelected($event, 'presentation')"
+                />
+              </label>
+            } @else {
+              <p class="text-sm font-medium text-neutral-600">Imagen de presentación</p>
+              <p class="mt-1 text-xs text-neutral-400">
+                Guardá el producto primero para subir la foto del menú.
+              </p>
+            }
+            }
+          }
+        </div>
+
+        <div
+          class="relative flex min-h-48 flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white p-6 text-center transition-colors"
+          [class.border-neutral-900]="isDragOver() === 'immersive' && canUpload()"
+          [class.bg-neutral-50]="isDragOver() === 'immersive' && canUpload()"
+          [class.border-neutral-200]="isDragOver() !== 'immersive' || !canUpload()"
+          [class.opacity-60]="!isEdit()"
+          (dragover)="onDragOver($event, 'immersive')"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event, 'immersive')"
+        >
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Experiencia inmersiva
+            <span class="font-medium normal-case tracking-normal text-neutral-400"> (opcional)</span>
+          </p>
+          @if (uploading() && uploadingSlot() === 'immersive') {
+            <div class="flex w-full flex-col items-center gap-3">
+              <div
+                class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+              ></div>
+              <p class="text-sm font-medium text-neutral-600">Subiendo… {{ uploadProgress() }}%</p>
+              <div class="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+                <div
+                  class="h-full rounded-full bg-neutral-900 transition-[width]"
+                  [style.width.%]="uploadProgress()"
+                ></div>
+              </div>
+            </div>
+          } @else if (removingSlot() === 'immersive') {
+            <div class="flex w-full flex-col items-center gap-3">
+              <div
+                class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+              ></div>
+              <p class="text-sm font-medium text-neutral-600">Quitando modelo…</p>
+            </div>
+          } @else {
+            @if (modelPreview(); as preview) {
+              <svg
+                class="mb-3 h-12 w-12 text-neutral-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                aria-hidden="true"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12v9M12 12L4 7.5"
+                />
+              </svg>
+              <p class="text-sm font-medium text-neutral-700">Modelo 3D listo</p>
+              @if (preview.fileName) {
+                <p class="mt-1 truncate text-xs text-neutral-500">{{ preview.fileName }}</p>
+              }
+              @if (canUpload()) {
+                <div class="mt-3 flex flex-col items-center gap-2">
+                  <label class="cursor-pointer text-xs font-semibold text-neutral-700 underline">
+                    Reemplazar modelo
+                    <input
+                      type="file"
+                      class="sr-only"
+                      accept=".glb,.usdz"
+                      (change)="onFileSelected($event, 'immersive')"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                    (click)="askRemove('immersive')"
+                  >
+                    Quitar modelo
+                  </button>
+                </div>
+              }
+            } @else {
+            <svg
+              class="mb-3 h-10 w-10 text-neutral-300"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              aria-hidden="true"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM12 12l8-4.5M12 12v9M12 12L4 7.5"
+              />
+            </svg>
+            @if (isEdit()) {
+              <p class="text-sm font-medium text-neutral-700">Modelo para ver el plato en la mesa</p>
+              <p class="mt-1 text-xs text-neutral-400">
+                Preferí .glb para Chrome y Android. El .usdz abre AR en iPhone. Máx. 50 MB.
+              </p>
+              <p class="mt-1 text-xs text-neutral-400">
+                Si no tenés el archivo, abrí la guía de abajo.
+              </p>
+              <label
+                class="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-full px-4 text-xs font-semibold text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-100"
+              >
+                Elegir modelo
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept=".glb,.usdz"
+                  (change)="onFileSelected($event, 'immersive')"
+                />
+              </label>
+            } @else {
+              <p class="text-sm font-medium text-neutral-600">Experiencia inmersiva</p>
+              <p class="mt-1 text-xs text-neutral-400">
+                Opcional. Guardá el producto primero para subir un .glb o .usdz. Abajo hay una guía para crearlo con el celular.
+              </p>
+            }
+            }
+          }
+        </div>
+
+        <details
+          class="group rounded-2xl bg-white p-4 text-left ring-1 ring-neutral-100"
+        >
+          <summary
+            class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-neutral-800 marker:content-none [&::-webkit-details-marker]:hidden"
+          >
+            ¿Cómo creo el modelo 3D?
+            <svg
+              class="h-5 w-5 shrink-0 text-neutral-400 transition-transform group-open:rotate-180"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </summary>
+          <div class="mt-1 space-y-3 border-t border-neutral-100 pt-3 text-xs leading-relaxed text-neutral-600">
+            <p>
+              Es opcional: el menú funciona igual con la foto. Con el modelo, el comensal puede ver el plato en su mesa usando la cámara del celular.
+            </p>
+            <p>
+              No hace falta un diseñador 3D. Se escanea con el teléfono, con apps como
+              <span class="font-semibold text-neutral-800">Polycam</span>,
+              <span class="font-semibold text-neutral-800">Scaniverse</span>
+              o
+              <span class="font-semibold text-neutral-800">Luma AI</span>.
+            </p>
+            <div>
+              <p class="font-semibold text-neutral-800">El proceso</p>
+              <ol class="mt-1.5 list-decimal space-y-1.5 pl-4">
+                <li>Poné el plato en una mesa bien iluminada.</li>
+                <li>Caminá despacio alrededor mientras la app saca fotos desde todos los ángulos.</li>
+                <li>
+                  La app genera el archivo. Descargá
+                  <span class="font-semibold text-neutral-800">.glb</span>
+                  (Chrome y Android) o
+                  <span class="font-semibold text-neutral-800">.usdz</span>
+                  (AR en iPhone).
+                </li>
+                <li>Subilo acá. Máximo 50 MB.</li>
+              </ol>
+            </div>
+          </div>
+        </details>
+
+        @if (uploadError()) {
+          <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ uploadError() }}
+          </p>
+        }
+      </aside>
+    </div>
+
+    @if (isEdit()) {
+      <section class="mt-6 rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6">
+        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 class="text-base font-bold text-neutral-900">Promos de este plato</h2>
+            <p class="mt-1 text-sm text-neutral-500">
+              Acá ves por qué en la carta puede aparecer un precio tachado. Si la oferta es de categoría, también afecta a otros platos.
+            </p>
+          </div>
+          <a
+            class="inline-flex min-h-11 items-center justify-center rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800"
+            [routerLink]="['/admin/promos/new']"
+            [queryParams]="{ productId: id() }"
+          >
+            Nueva promo para este plato
+          </a>
+        </div>
+        <p class="mb-4 text-sm text-neutral-500">
+          <a
+            class="font-medium text-neutral-800 underline-offset-2 hover:underline"
+            [routerLink]="['/admin/promos/happy-hours/new']"
+            [queryParams]="{ productId: id() }"
+          >
+            Crear un Happy Hour para este plato
+          </a>
+        </p>
+
+        @if (offers().length === 0) {
+          <p class="rounded-xl bg-neutral-50 px-4 py-6 text-center text-sm text-neutral-500">
+            Este plato no tiene promos ni Happy Hour. El precio de lista es el que ve el comensal.
+          </p>
+        } @else {
+          <ul class="flex flex-col gap-3">
+            @for (offer of offers(); track offer.kind + offer.id) {
+              <li class="rounded-xl p-4 ring-1 ring-neutral-100">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p class="font-semibold text-neutral-900">{{ offerName(offer) }}</p>
+                    <p class="mt-1 text-sm text-neutral-600">
+                      {{ offerKindLabel(offer) }} · {{ offerPriceLabel(offer) }}
+                    </p>
+                    <p class="mt-1 text-sm text-neutral-500">
+                      {{ offerScopeLabel(offer) }} · {{ offerStateLabel(offer) }}
+                    </p>
+                  </div>
+                  <div class="flex gap-2">
+                    <a
+                      class="inline-flex min-h-11 items-center rounded-full px-3 text-xs font-semibold text-neutral-700 hover:bg-neutral-100"
+                      [routerLink]="offerEditLink(offer)"
+                    >
+                      Editar
+                    </a>
+                    <button
+                      type="button"
+                      class="min-h-11 rounded-full px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      (click)="askDeleteOffer(offer)"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </section>
+    }
+  }
+</section>
+
+@if (pendingRemoveSlot(); as slot) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="cancelRemove()"
+    ></button>
+    <div
+      class="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <h2 class="text-base font-bold text-neutral-900">
+        {{ slot === 'presentation' ? 'Quitar imagen de presentación' : 'Quitar experiencia inmersiva' }}
+      </h2>
+      <p class="mt-2 text-sm text-neutral-600">
+        @if (slot === 'presentation') {
+          ¿Quitar esta foto del producto? El menú mostrará el placeholder hasta que subas otra. Esta acción no se puede deshacer.
+        } @else {
+          ¿Quitar el modelo 3D? El botón de realidad aumentada desaparecerá del menú. Esta acción no se puede deshacer.
+        }
+      </p>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          [disabled]="removingSlot()"
+          (click)="cancelRemove()"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="min-h-11 rounded-full bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+          [disabled]="removingSlot()"
+          (click)="confirmRemove()"
+        >
+          {{ removingSlot() ? 'Quitando…' : 'Quitar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (pendingDeleteOffer(); as offer) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="cancelDeleteOffer()"
+    ></button>
+    <div
+      class="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <h2 class="text-base font-bold text-neutral-900">
+        Eliminar {{ offerKindLabel(offer) }}
+      </h2>
+      <p class="mt-2 text-sm text-neutral-600">
+        ¿Eliminar “{{ offerName(offer) }}”? El precio de lista no cambia; deja de aplicarse el descuento en la carta.
+        @if (offer.scope === 'CATEGORY') {
+          Esta oferta también cubre otros platos de la categoría.
+        }
+      </p>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          [disabled]="deletingOffer()"
+          (click)="cancelDeleteOffer()"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="min-h-11 rounded-full bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+          [disabled]="deletingOffer()"
+          (click)="confirmDeleteOffer()"
+        >
+          {{ deletingOffer() ? 'Eliminando…' : 'Eliminar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

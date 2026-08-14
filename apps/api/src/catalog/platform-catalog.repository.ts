@@ -45,4 +45,22 @@ export class PlatformCatalogRepository {
       iconUrl: dietaryTag.iconUrl,
     }));
   }
+
+  async countAllergensByIds(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    return this.prisma.allergen.count({
+      where: { id: { in: [...ids] } },
+    });
+  }
+
+  async countDietaryTagsByIds(ids: readonly string[]): Promise<number> {
+    if (ids.length === 0) {
+      return 0;
+    }
+    return this.prisma.dietaryTag.count({
+      where: { id: { in: [...ids] } },
+    });
+  }
 }

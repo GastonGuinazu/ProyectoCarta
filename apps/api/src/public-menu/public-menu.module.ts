@@ -15,8 +15,8 @@ import { MenuService } from './menu.service';
  * (árbol de categorías/productos, combos, y catálogos globales de
  * alérgenos/tags dietéticos), `EngagementModule` (resolución de
  * `activePromotion` vigente por Producto/Combo) y `MediaModule` (resolución
- * en batch de `imageUrl`/`images`/`webAr`). A futuro solo falta completar
- * `meta` (docs/api-contracts.md §3).
+ * en batch de `imageUrl`/`images`/`webAr`). `tenant.branding` sale de
+ * TenantModule. A futuro solo falta completar `meta` (docs/api-contracts.md §3).
  */
 @Module({
   imports: [TenantModule, CatalogModule, EngagementModule, MediaModule],

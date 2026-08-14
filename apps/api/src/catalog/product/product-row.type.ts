@@ -36,13 +36,20 @@ export interface ProductRow {
   readonly order: number;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
   /**
    * Id del `MediaAsset` asociado vía `ProductMedia` con `role: PRIMARY`
-   * (`null` si el producto todavía no tiene imagen principal cargada).
+   * e `fileType: IMAGE` (`null` si todavía no hay foto de presentación).
    * Pendiente de resolverse a una URL real por `MediaModule` — ver
    * `CatalogService.getFullCatalogForBranch` y
    * `public-menu/apply-media-urls.util.ts`.
    */
   readonly primaryMediaAssetId: string | null;
+  /**
+   * Id del `MediaAsset` con `role: AR_MODEL` (`.glb`/`.usdz` opcional).
+   * Independiente de `primaryMediaAssetId`: un producto puede tener ambos.
+   */
+  readonly arModelMediaAssetId: string | null;
   readonly variantGroups: readonly ProductVariantGroupRow[];
 }

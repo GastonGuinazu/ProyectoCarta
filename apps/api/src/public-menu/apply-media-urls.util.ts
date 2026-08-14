@@ -15,6 +15,7 @@ import type {
 export interface MediaAssetReferences {
   readonly categoryImageAssetIds: ReadonlyMap<string, string>;
   readonly productPrimaryAssetIds: ReadonlyMap<string, string>;
+  readonly productArModelAssetIds: ReadonlyMap<string, string>;
   readonly comboImageAssetIds: ReadonlyMap<string, string>;
 }
 
@@ -76,21 +77,27 @@ function applyToProduct(
   references: MediaAssetReferences,
   resolvedMedia: ReadonlyMap<string, ResolvedMediaAsset>,
 ): ProductNode {
-  const resolved = lookupResolvedAsset(
+  const primary = lookupResolvedAsset(
     product.id,
     references.productPrimaryAssetIds,
+    resolvedMedia,
+  );
+  const arModel = lookupResolvedAsset(
+    product.id,
+    references.productArModelAssetIds,
     resolvedMedia,
   );
 
   return {
     ...product,
     images: {
-      thumbnailUrl: resolved?.thumbnailUrl ?? null,
-      detailUrl: resolved?.detailUrl ?? null,
+      thumbnailUrl: primary?.thumbnailUrl ?? null,
+      detailUrl: primary?.detailUrl ?? null,
     },
     webAr: {
-      enabled: !!resolved?.arCutoutUrl,
-      assetUrl: resolved?.arCutoutUrl ?? null,
+      enabled: !!primary?.arCutoutUrl || !!arModel?.model3dUrl,
+      assetUrl: primary?.arCutoutUrl ?? null,
+      modelUrl: arModel?.model3dUrl ?? null,
     },
   };
 }

@@ -28,14 +28,14 @@ Cada uno de los 5 **Bounded Contexts** de `domain-modules.md` se mapea a un `Mod
 | Dominio (`domain-modules.md`) | Módulo NestJS | Responsabilidad |
 |---|---|---|
 | Tenant | `TenantModule` | Tenants, Sucursales, Usuarios, Roles (RBAC), Planes y sus límites. Es el módulo raíz: ningún otro módulo de dominio puede ser importado por él. |
-| — (transversal, datos de Tenant) | `AuthModule` | Login, emisión/validación de JWT, refresh tokens. Depende de `TenantModule` para leer Usuarios/Roles. |
+| — (transversal, datos de Tenant) | `AuthModule` | Única autoridad de identidad y sesión del Panel Admin: login, Argon2id, emisión/validación del JWT de aplicación, refresh opaco (cookie HttpOnly), logout/revocación. Depende de `TenantModule` para leer Usuarios/Roles. No delega identidad a Supabase Auth. |
 | Catalog | `CatalogModule` | Categorías (jerarquía auto-referencial), Productos, Combos, Variantes. |
 | Engagement | `EngagementModule` | Promos y Happy Hours, incluyendo el motor de evaluación de vigencia y resolución de solapamiento (`features-spec.md` §3.2). |
 | Media & AR | `MediaModule` | `MediaAsset`, `ProcessedVariant`, integración con Cloudinary y Supabase Storage, orquestación del pipeline de compresión/recorte de fondo con IA. |
 | Analytics | `AnalyticsModule` | `ScanEvent`, `InteractionEvent`, `AggregatedMetric`. Dominio de solo consumo/agregación (`domain-modules.md` §6.5). |
 | — (composición de lectura) | `PublicMenuModule` | Orquesta `CatalogModule` + `EngagementModule` + `MediaModule` + `TenantModule` para construir el payload único de `GET /api/v1/menu/public/...` (`api-contracts.md` §3). No contiene entidades propias: es una capa de agregación de solo lectura. |
 | — (infraestructura) | `PrismaModule` (global) | Expone el cliente Prisma extendido (ver §4) a todos los módulos. |
-| — (infraestructura) | `CommonModule` (global) | Guards, Interceptors, Filters, decoradores compartidos (`@CurrentTenant()`, `@CurrentUser()`), configuración validada de variables de entorno. |
+| — (infraestructura) | `CommonModule` (global) | Guards (`JwtAuthGuard`, `TenantContextGuard`, `RolesGuard`, `BranchScopeGuard`), Interceptors, Filters, decoradores compartidos (`@CurrentTenant()`, `@CurrentUser()`, `@RequiredRole()`, `@Public()`), configuración validada de variables de entorno. |
 
 ### 2.2 Grafo de Dependencias entre Módulos
 
@@ -80,7 +80,7 @@ Este grafo es **idéntico en dirección** al "Mapa de Dependencias Consolidado" 
 ```mermaid
 flowchart TD
     A[Request HTTP entrante] --> B["Middleware Global<br/>(Helmet, CORS dinámico por Tenant, RateLimiterMiddleware)"]
-    B --> C["Guards<br/>(orden: ThrottlerGuard → TenantResolutionGuard → JwtAuthGuard → RolesGuard)"]
+    B --> C["Guards (bifurcados por superficie; ver §3.2)"]
     C --> D["Interceptors (fase 'antes')<br/>(TenantContextInterceptor, LoggingInterceptor)"]
     D --> E["Pipes<br/>(ValidationPipe global sobre DTOs de entrada)"]
     E --> F[Controller]
@@ -96,57 +96,77 @@ flowchart TD
     E -.->|Validación falla| L
 ```
 
-### 3.2 Orden Estricto de Guards y su Justificación
+### 3.2 Orden de Guards — Bifurcado por Superficie
+
+Los guards de NestJS **no reentran**: no se puede ejecutar `TenantResolutionGuard`, luego `JwtAuthGuard`, y “volver” al primero para setear el contexto. Por eso el pipeline se **bifurca**. `ThrottlerGuard` es siempre el primero (rechaza abuso antes de resolver tenant o JWT).
+
+**Público** (`/api/v1/menu/**`, analytics de comensal):
+
+`ThrottlerGuard` → `TenantResolutionGuard` (slug de ruta) → Controller. Sin JWT. Sin `RolesGuard`.
+
+**Admin no autenticado** (`POST /api/v1/admin/auth/login`, refresh, logout):
+
+`ThrottlerGuard` (más estricto en login). Rutas marcadas `@Public()`. Sin JWT. Sin `TenantContext` de negocio.
+
+**Admin autenticado, sin tenant** (`POST /api/v1/admin/auth/change-password`): JWT + `@SkipTenantContext()`. Opera sobre `sub`/`tenantId` del JWT, no sobre `X-Tenant-Id`.
+
+**Admin autenticado** (`/api/v1/admin/**`):
 
 | Orden | Guard | Rol |
 |---|---|---|
-| 1 | `ThrottlerGuard` | Rechaza la request lo antes posible si se superó el rate limit (`features-spec.md` §7.3–7.4), evitando gastar ciclos de cómputo en resolver tenant/JWT para tráfico abusivo. |
-| 2 | `TenantResolutionGuard` | Resuelve el contexto de Tenant/Sucursal (ver §3.3). Se ejecuta **antes** de `JwtAuthGuard` porque incluso las rutas públicas (sin JWT) necesitan este contexto. |
-| 3 | `JwtAuthGuard` | Solo activo en rutas `/admin/**` (vía decorador de metadata en el Controller/handler). Valida firma y expiración del JWT, puebla `request.user` con los claims (`api-contracts.md` §4.5). |
-| 4 | `RolesGuard` | Solo activo en rutas `/admin/**` que declaran un Rol mínimo requerido (decorador `@RequiredRole(...)`). Compara el Rol efectivo del usuario (desde `request.user.roles`) contra el requerido por el endpoint. |
+| 1 | `ThrottlerGuard` | Rate limit administrativo (por plan del tenant cuando ya hay contexto; en login, por IP). |
+| 2 | `JwtAuthGuard` | Valida firma y `exp` del JWT de aplicación, usuario `ACTIVE`. Puebla `request.user` con los claims (`api-contracts.md` §4.5). |
+| 3 | `TenantContextGuard` | OWNER/ADMIN/STAFF: `TenantContext` = `tenantId` **de los claims**. `PLATFORM_ADMIN`: contexto nulo, o impersonación si envía `X-Tenant-Id` (cualquier otro rol que mande ese header: se ignora). Params/body no pueden cambiar el tenant. `X-Branch-Id` opcional: sucursal del selector del panel, validada contra ese tenant y el alcance del rol. |
+| 4 | `RolesGuard` | Decorador `@RequiredRole(...)`. Compara el rol efectivo contra la jerarquía `PLATFORM_ADMIN > OWNER > ADMIN > STAFF`. |
+| 5 | `BranchScopeGuard` | Solo handlers que declaran sucursal: el `branchId` de la operación debe estar en las asignaciones del usuario (o cubierto por un rol de alcance `TENANT`). |
 
-### 3.3 `TenantResolutionGuard` — Diseño Conceptual
+Controllers administrativos: `@UseGuards(JwtAuthGuard, RolesGuard)` + `@RequiredRole(...)`. Está prohibido verificar roles con `if` sueltos en Services (`.cursor/rules/03-backend-nestjs.mdc`). Fail-closed: operación tenant-scoped sin `TenantContext` se rechaza.
 
-Es el guard más crítico de todo el sistema, porque de él depende que el resto del pipeline (Interceptors, Services, Repositories, y la extensión de Prisma de la Sección 4) tenga siempre un `TenantContext` confiable.
+### 3.3 Resolución de Tenant — Diseño Conceptual
 
-**Dos rutas de resolución posibles, unificadas en la misma forma de salida:**
+Es el mecanismo más crítico de aislamiento, porque de él depende que el resto del pipeline (Interceptors, Services, Repositories, y la extensión de Prisma de la Sección 4) tenga un `TenantContext` confiable. Según la superficie, lo ejecuta `TenantResolutionGuard` (público) o `TenantContextGuard` (admin autenticado).
+
+**Tres rutas de resolución, una misma forma de salida** (`TenantContext { tenantId, branchId | null }`; `tenantId` puede ser nulo solo en consola de plataforma):
 
 | Origen de la request | Cómo se resuelve el `tenantId`/`branchId` |
 |---|---|
-| Ruta pública (`/api/v1/menu/public/:tenantSlug/:branchSlug`) | El guard extrae `tenantSlug` y `branchSlug` de los **parámetros de ruta**, consulta (con caché de corta duración) a un `TenantLookupService` expuesto por `TenantModule`, y valida que el Tenant esté `ACTIVE` (no suspendido, `architecture.md` §3) y que la Sucursal exista. |
-| Ruta administrativa (`/api/v1/admin/**`) | El guard **no vuelve a resolver desde slugs**: reutiliza el `tenantId` ya presente en los claims del JWT (una vez que `JwtAuthGuard` corrió y pobló `request.user`), evitando una consulta redundante y garantizando que un administrador nunca pueda operar sobre un Tenant distinto al de su propia sesión, aunque manipule parámetros de la URL. |
+| Ruta pública (`/api/v1/menu/public/:tenantSlug/:branchSlug`) | `TenantResolutionGuard` extrae slugs de la **ruta**, consulta (caché corta) a `TenantLookupService` de `TenantModule`, y valida que el Tenant no esté `SUSPENDED`/`CANCELLED` (`TRIAL` y `ACTIVE` resuelven) y que la Sucursal exista. |
+| Ruta administrativa de usuario de tenant | `TenantContextGuard` **no** resuelve desde slugs: usa el `tenantId` de los claims (después de `JwtAuthGuard`). Un administrador de tenant nunca puede operar sobre otro Tenant aunque manipule la URL o el body. |
+| Ruta administrativa de `PLATFORM_ADMIN` | Sin tenant de negocio (consola de tenants/planes: cliente Prisma **sin** extensión de tenant, vía auditada §4.2). Impersonación de soporte: header `X-Tenant-Id` **solo** si el caller es `PLATFORM_ADMIN`; ese valor se convierte en `TenantContext`. |
 
-**Salida del guard**: en ambos casos, el guard construye el mismo objeto conceptual `TenantContext { tenantId, branchId | null }` y lo deja disponible para el resto del ciclo de vida de la request de dos formas complementarias:
+**Salida**: el contexto queda disponible de dos formas complementarias:
 
-1. **Explícita**: adjuntado a `request` (ej. `request.tenantContext`), accesible desde Controllers/Services vía el decorador `@CurrentTenant()` de `CommonModule`.
-2. **Implícita (para la capa de datos)**: propagado a un almacenamiento contextual basado en `AsyncLocalStorage` (ver Sección 4), de forma que el mecanismo automático de aislamiento de Prisma pueda leerlo sin que cada Service tenga que pasarlo manualmente en cada llamada interna.
+1. **Explícita**: adjuntado a `request` (ej. `request.tenantContext`), accesible vía `@CurrentTenant()` de `CommonModule`.
+2. **Implícita (capa de datos)**: `AsyncLocalStorage` (Sección 4), para que Prisma lea el `tenantId` sin pasarlo a mano en cada llamada interna. Ausente en consola de plataforma (cliente Prisma sin extensión).
 
-**Fallos de resolución**: si el Tenant/Sucursal no existe o está suspendido, el guard lanza directamente la excepción correspondiente (`TENANT_OR_BRANCH_NOT_FOUND` / `TENANT_SUSPENDED`, ver `api-contracts.md` §3.7), cortando el pipeline antes de llegar a Interceptors/Controller.
+**Fallos de resolución**: Tenant/Sucursal inexistente o suspendido → `TENANT_OR_BRANCH_NOT_FOUND` / `TENANT_SUSPENDED` (`api-contracts.md` §3.7), cortando el pipeline.
 
 ### 3.4 Secuencia Comparada: Request Pública vs. Request Administrativa
 
 ```mermaid
 sequenceDiagram
-    participant C1 as Comensal (GET /menu/public/...)
-    participant C2 as Admin (POST /admin/catalog/products)
-    participant TG as TenantResolutionGuard
+    participant C1 as Comensal GET menu public
+    participant C2 as Admin POST catalog products
+    participant TR as TenantResolutionGuard
     participant JG as JwtAuthGuard
+    participant TC as TenantContextGuard
     participant RG as RolesGuard
+    participant BG as BranchScopeGuard
     participant Ctrl as Controller
     participant Svc as Service
-    participant Repo as Repository (Prisma)
+    participant Repo as Repository Prisma
 
-    C1->>TG: resuelve tenant/branch por slug de ruta
-    TG->>Ctrl: TenantContext adjunto (sin JWT)
+    C1->>TR: resuelve tenant/branch por slug de ruta
+    TR->>Ctrl: TenantContext adjunto sin JWT
     Ctrl->>Svc: obtenerMenuPublico()
-    Svc->>Repo: consultas filtradas (tenantId ya en contexto)
+    Svc->>Repo: consultas filtradas tenantId en contexto
 
-    C2->>TG: (placeholder, aún sin JWT decodificado)
-    TG->>JG: continúa pipeline
-    JG->>JG: valida y decodifica JWT
-    JG->>TG: TenantContext derivado de claims del JWT
-    TG->>RG: verifica Rol requerido (OWNER/ADMIN)
-    RG->>Ctrl: autorizado
+    C2->>JG: valida y decodifica JWT de aplicacion
+    JG->>TC: request.user con claims
+    TC->>TC: TenantContext desde tenantId del JWT
+    TC->>RG: verifica rol minimo OWNER o ADMIN
+    RG->>BG: verifica sucursal accesible si aplica
+    BG->>Ctrl: autorizado
     Ctrl->>Svc: crearProducto(dto)
     Svc->>Repo: crea con tenantId del contexto
 ```
@@ -183,7 +203,7 @@ Se define una extensión de Prisma Client que se aplica **solo sobre los modelos
 
 **Paso 3 — Comportamiento ante ausencia de contexto (fail-closed, no fail-open).**
 
-Si la extensión detecta que se está ejecutando una operación sobre un modelo "tenant-scoped" **sin** un `TenantContext` activo en el `AsyncLocalStorage` (ej. un job en background mal configurado, o un script de mantenimiento), la operación debe **rechazarse explícitamente** (lanzar una excepción interna) en lugar de ejecutarse sin filtro. Cualquier caso legítimo que necesite operar verdaderamente "a través de todos los tenants" (ej. un proceso de agregación de métricas de plataforma para el equipo interno) debe usar una vía explícitamente distinta y auditada (ej. un cliente Prisma separado sin esta extensión, reservado a procesos internos claramente identificados), nunca un "bypass" implícito o silencioso.
+Si la extensión detecta que se está ejecutando una operación sobre un modelo "tenant-scoped" **sin** un `TenantContext` activo en el `AsyncLocalStorage` (ej. un job en background mal configurado, o un script de mantenimiento), la operación debe **rechazarse explícitamente** (lanzar una excepción interna) en lugar de ejecutarse sin filtro. Cualquier caso legítimo que necesite operar verdaderamente "a través de todos los tenants" (consola de `PLATFORM_ADMIN`, agregación de métricas de plataforma) debe usar una vía explícitamente distinta y auditada (un cliente Prisma separado **sin** esta extensión, reservado a procesos internos claramente identificados), nunca un "bypass" implícito o silencioso. La impersonación de soporte (`X-Tenant-Id` + `PLATFORM_ADMIN`) **sí** entra en `AsyncLocalStorage` con el tenant impersonado y usa el cliente extendido.
 
 ### 4.3 Diagrama Conceptual del Mecanismo
 
@@ -211,9 +231,9 @@ flowchart LR
 |---|---|
 | Mapeo dominio → módulo | 1 a 1 (`Tenant`, `Catalog`, `Engagement`, `Media`, `Analytics`) + `AuthModule`, `PublicMenuModule`, `PrismaModule`, `CommonModule` como módulos de infraestructura/composición |
 | Comunicación entre módulos | Services exportados explícitamente + Event Emitter para notificaciones en sentido inverso; sin `forwardRef()` como solución de dependencias circulares |
-| Orden de Guards | `ThrottlerGuard` → `TenantResolutionGuard` → `JwtAuthGuard` → `RolesGuard` |
-| Resolución de tenant | Por slug de ruta (público) o por claims de JWT (admin), unificadas en el mismo `TenantContext` |
-| Aislamiento de datos | 3 capas: `tenantId` explícito en Repository, Prisma Client Extension automática vía `AsyncLocalStorage`, Row Level Security de PostgreSQL |
+| Orden de Guards | Bifurcado: público = Throttler → TenantResolution (slug); admin login = Throttler + `@Public()`; admin autenticado = Throttler → JwtAuthGuard → TenantContextGuard → RolesGuard → BranchScopeGuard |
+| Resolución de tenant | Por slug de ruta (público) o por claims de JWT (admin de tenant). `PLATFORM_ADMIN`: sin tenant, o `X-Tenant-Id` solo para impersonación |
+| Aislamiento de datos | 3 capas: `tenantId` explícito en Repository, Prisma Client Extension automática vía `AsyncLocalStorage`, Row Level Security de PostgreSQL. Consola de plataforma: cliente Prisma sin extensión |
 | Comportamiento ante contexto ausente | *Fail-closed*: se rechaza la operación, nunca se ejecuta sin filtro por omisión |
 
 ---

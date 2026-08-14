@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { TenantContextService, TenantOrBranchNotFoundException } from '../core';
 import { BranchService } from '../tenant/branch/branch.service';
-import {
-  isWithinMinuteWindow,
-  resolveBranchLocalMoment,
-} from './branch-local-time.util';
+import { isHappyHourActiveNow } from './branch-local-time.util';
 import type { ActivePromotionsResolver } from './engagement.types';
 import { HappyHourRepository } from './happy-hour/happy-hour.repository';
 import type { HappyHourRow } from './happy-hour/happy-hour-row.type';
@@ -98,24 +95,6 @@ export class EngagementService {
       },
     };
   }
-}
-
-function isHappyHourActiveNow(
-  happyHour: HappyHourRow,
-  timezone: string,
-  now: Date,
-): boolean {
-  const { dayOfWeek, minuteOfDay } = resolveBranchLocalMoment(now, timezone);
-
-  if (!happyHour.daysOfWeek.includes(dayOfWeek)) {
-    return false;
-  }
-
-  return isWithinMinuteWindow(
-    minuteOfDay,
-    happyHour.startMinuteOfDay,
-    happyHour.endMinuteOfDay,
-  );
 }
 
 function indexCandidatesFromPromo(

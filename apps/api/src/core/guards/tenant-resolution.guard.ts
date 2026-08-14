@@ -19,13 +19,9 @@ import { PrismaService } from '../prisma/prisma.service';
  * ocurrir sin un `tenant_id` previo — en este punto del pipeline el contexto
  * todavía no existe, es justamente este Guard quien lo va a crear.
  *
- * TODO(auth): cuando exista `AuthModule`/`JwtAuthGuard`, extender este Guard (o
- * agregar uno complementario) para que las rutas `/api/v1/admin/**` reutilicen el
- * `tenantId`/`branchId` de los claims del JWT en vez de resolver por slug, tal como
- * describe `docs/backend-architecture.md` §3.3 (ruta administrativa). Hasta que eso
- * exista, las rutas sin slug de tenant en la URL deben declarar explícitamente
- * `@SkipTenantResolution()`; de lo contrario cualquier intento de tocar un modelo
- * tenant-scoped fallará de forma cerrada en la extensión de Prisma (Capa 2).
+ * Las rutas `/api/v1/admin/**` no resuelven por slug: el `tenantId` sale de
+ * los claims JWT (o de `X-Tenant-Id` si impersona `PLATFORM_ADMIN`) vía
+ * `TenantContextGuard`, que corre después de `JwtAuthGuard`.
  */
 @Injectable()
 export class TenantResolutionGuard implements CanActivate {

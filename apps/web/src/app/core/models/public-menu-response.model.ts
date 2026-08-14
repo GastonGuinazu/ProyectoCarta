@@ -19,10 +19,19 @@ import type {
  * (ej. se agrega paginación, se renombra un campo), solo hay que tocar los
  * mappers en `tenant-resolver.service.ts`, no todo el árbol de Stores/UI.
  *
- * `meta` y `tenant.branding` (docs/api-contracts.md §3.5) siguen sin
- * implementarse en el backend (pendientes de `MediaModule`) — no forman parte
- * de este tipo todavía.
+ * `meta` (docs/api-contracts.md §3.5) sigue pendiente; `tenant.branding`
+ * ya forma parte de este tipo.
  */
+export interface PublicMenuTenantApiModel {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: string;
+  readonly branding: {
+    readonly primaryColor: string | null;
+    readonly logoUrl: string | null;
+  };
+}
+
 export interface PublicMenuBranchApiModel {
   readonly id: string;
   readonly slug: string;
@@ -31,6 +40,8 @@ export interface PublicMenuBranchApiModel {
   readonly address: string | null;
   readonly phone: string | null;
   readonly whatsapp: string | null;
+  readonly instagram: string | null;
+  readonly bannerUrl: string | null;
   readonly operationalStatus: BranchOperationalStatus;
 }
 
@@ -78,6 +89,9 @@ export interface ProductApiModel {
   readonly order: number;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
+  readonly outsideServingHours: boolean;
   readonly images: {
     readonly thumbnailUrl: string | null;
     readonly detailUrl: string | null;
@@ -85,6 +99,7 @@ export interface ProductApiModel {
   readonly webAr: {
     readonly enabled: boolean;
     readonly assetUrl: string | null;
+    readonly modelUrl: string | null;
   };
   readonly variantGroups: readonly ProductVariantGroupApiModel[];
   readonly activePromotion: ActivePromotionApiModel | null;
@@ -141,6 +156,7 @@ export interface PlatformCatalogsApiModel {
 }
 
 export interface PublicMenuApiResponse {
+  readonly tenant: PublicMenuTenantApiModel;
   readonly branch: PublicMenuBranchApiModel;
   readonly categories: readonly CategoryApiModel[];
   readonly combos: readonly ComboApiModel[];

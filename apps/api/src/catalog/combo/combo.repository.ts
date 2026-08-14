@@ -1,10 +1,62 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { AvailabilityStatus, Prisma } from '@prisma/client';
 import {
   TENANT_PRISMA_CLIENT,
   type LocalizedText,
   type TenantScopedPrismaClient,
 } from '../../core';
 import type { ComboRow } from './combo-row.type';
+
+export interface AdminComboItemWrite {
+  readonly productId: string;
+  readonly quantity: number;
+}
+
+export interface AdminComboWriteInput {
+  readonly slug: string;
+  readonly name: LocalizedText;
+  readonly description: LocalizedText | null;
+  readonly priceCents: number;
+  readonly currency?: string;
+  readonly availability: AvailabilityStatus;
+  readonly items: readonly AdminComboItemWrite[];
+}
+
+export interface AdminComboPatchInput {
+  readonly name?: LocalizedText;
+  readonly description?: LocalizedText | null;
+  readonly priceCents?: number;
+  readonly currency?: string;
+  readonly availability?: AvailabilityStatus;
+  readonly items?: readonly AdminComboItemWrite[];
+}
+
+export interface AdminComboItemRecord {
+  readonly productId: string;
+  readonly quantity: number;
+  readonly productName: LocalizedText;
+}
+
+export interface AdminComboRecord {
+  readonly id: string;
+  readonly slug: string;
+  readonly name: LocalizedText;
+  readonly description: LocalizedText | null;
+  readonly priceCents: number;
+  readonly currency: string;
+  readonly availability: AvailabilityStatus;
+  readonly imageMediaAssetId: string | null;
+  readonly items: readonly AdminComboItemRecord[];
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+const ADMIN_COMBO_INCLUDE = {
+  items: {
+    include: { product: { select: { name: true } } },
+    orderBy: { id: 'asc' as const },
+  },
+} satisfies Prisma.ComboInclude;
 
 /**
  * Única capa autorizada a hablar con Prisma para el modelo `Combo`
@@ -88,4 +140,143 @@ export class ComboRepository {
       })),
     }));
   }
+
+  async findAdminList(tenantId: string): Promise<readonly AdminComboRecord[]> {
+    const combos = await this.prisma.combo.findMany({
+      where: { tenantId },
+      include: ADMIN_COMBO_INCLUDE,
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return combos.map(toAdminComboRecord);
+  }
+
+  async findAdminById(
+    tenantId: string,
+    comboId: string,
+  ): Promise<AdminComboRecord | null> {
+    const combo = await this.prisma.combo.findFirst({
+      where: { tenantId, id: comboId },
+      include: ADMIN_COMBO_INCLUDE,
+    });
+    return combo ? toAdminComboRecord(combo) : null;
+  }
+
+  async findIdBySlug(tenantId: string, slug: string): Promise<string | null> {
+    const combo = await this.prisma.combo.findFirst({
+      where: { tenantId, slug },
+      select: { id: true },
+    });
+    return combo?.id ?? null;
+  }
+
+  async findExistingIds(
+    tenantId: string,
+    ids: readonly string[],
+  ): Promise<readonly string[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const rows = await this.prisma.combo.findMany({
+      where: { tenantId, id: { in: [...ids] } },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async createAdmin(
+    tenantId: string,
+    input: AdminComboWriteInput,
+  ): Promise<AdminComboRecord> {
+    const combo = await this.prisma.combo.create({
+      data: {
+        tenantId,
+        slug: input.slug,
+        name: input.name,
+        description: input.description ?? Prisma.JsonNull,
+        priceCents: input.priceCents,
+        ...(input.currency !== undefined ? { currency: input.currency } : {}),
+        availability: input.availability,
+        items: {
+          create: input.items.map((item) => ({
+            tenantId,
+            productId: item.productId,
+            quantity: item.quantity,
+          })),
+        },
+      },
+      include: ADMIN_COMBO_INCLUDE,
+    });
+    return toAdminComboRecord(combo);
+  }
+
+  async updateAdmin(
+    tenantId: string,
+    comboId: string,
+    patch: AdminComboPatchInput,
+  ): Promise<AdminComboRecord> {
+    const combo = await this.prisma.$transaction(async (tx) => {
+      if (patch.items) {
+        await tx.comboItem.deleteMany({ where: { tenantId, comboId } });
+      }
+      return tx.combo.update({
+        where: { id: comboId, tenantId },
+        data: {
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.description !== undefined
+            ? { description: patch.description ?? Prisma.JsonNull }
+            : {}),
+          ...(patch.priceCents !== undefined
+            ? { priceCents: patch.priceCents }
+            : {}),
+          ...(patch.currency !== undefined ? { currency: patch.currency } : {}),
+          ...(patch.availability !== undefined
+            ? { availability: patch.availability }
+            : {}),
+          ...(patch.items
+            ? {
+                items: {
+                  create: patch.items.map((item) => ({
+                    tenantId,
+                    productId: item.productId,
+                    quantity: item.quantity,
+                  })),
+                },
+              }
+            : {}),
+        },
+        include: ADMIN_COMBO_INCLUDE,
+      });
+    });
+    return toAdminComboRecord(combo);
+  }
+
+  async deleteAdmin(tenantId: string, comboId: string): Promise<void> {
+    await this.prisma.combo.delete({
+      where: { id: comboId, tenantId },
+    });
+  }
+}
+
+type AdminComboPayload = Prisma.ComboGetPayload<{
+  include: typeof ADMIN_COMBO_INCLUDE;
+}>;
+
+function toAdminComboRecord(combo: AdminComboPayload): AdminComboRecord {
+  return {
+    id: combo.id,
+    slug: combo.slug,
+    name: combo.name as LocalizedText,
+    description: combo.description as LocalizedText | null,
+    priceCents: combo.priceCents,
+    currency: combo.currency,
+    availability: combo.availability,
+    imageMediaAssetId: combo.imageMediaAssetId,
+    items: combo.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      productName: item.product.name as LocalizedText,
+    })),
+    createdAt: combo.createdAt,
+    updatedAt: combo.updatedAt,
+  };
 }

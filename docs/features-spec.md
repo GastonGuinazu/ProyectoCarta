@@ -60,6 +60,12 @@ La eliminación de una `Category` que tiene categorías hijas y/o productos asoc
 - Si una `Category` se marca como **visible** pero uno de sus productos hijos fue marcado individualmente como oculto, **prevalece la marca más restrictiva** (el producto permanece oculto): la visibilidad efectiva de cualquier nodo del árbol es el resultado de la conjunción (AND lógico) de la visibilidad de sí mismo y de todos sus ancestros.
 - La **disponibilidad por Sucursal** sigue la misma lógica de herencia: si una Categoría no está habilitada para la Sucursal X, ningún producto de esa rama se muestra en el menú de esa sucursal, incluso si el producto individualmente está marcado como disponible en esa sucursal (la restricción a nivel categoría es la más alta en la jerarquía de herencia).
 
+### 2.6 Horario de servicio por producto
+
+Un Producto puede definir una ventana diaria opcional (`servedStartMinuteOfDay` / `servedEndMinuteOfDay`, minutos `[0, 1439]`). Si ambos campos son `null`, se sirve todo el día. Van en par: no se acepta solo una hora. El fin es **exclusivo** (a las 15:00 ya no se sirve si el hasta es 15:00) y el rango puede cruzar medianoche, con la misma regla que Happy Hour.
+
+La evaluación es en el **backend**, con la zona IANA de la sucursal (`Branch.timezone`), nunca con el reloj del celular del comensal ni con el del servidor. Fuera de la ventana el plato **sigue visible** en la carta, atenuado, con `outsideServingHours: true` y la etiqueta “Fuera de horario”. No se pisa el enum `availability`: un plato `OUT_OF_STOCK` sigue “No disponible” aunque esté en horario.
+
 ---
 
 ## 3. Combos y Promos: Precios Especiales y Temporalidad
@@ -81,11 +87,14 @@ Un mismo `Product` puede estar alcanzado simultáneamente por múltiples `Promo`
 4. **No acumulación implícita**: el sistema **no combina/suma automáticamente** los porcentajes o montos de descuento de dos promociones distintas sobre el mismo producto. Si el negocio realmente desea un descuento combinado, debe modelarse como una única Promo con el valor final deseado.
 5. **Transparencia al comensal**: cuando un producto tiene una promoción activa, la interfaz pública debe indicar claramente el motivo (ej. una etiqueta "Happy Hour" o "Promo" con el nombre correspondiente), evitando ambigüedad sobre por qué el precio mostrado difiere del precio de lista.
 
+En la carta pública el orden de secciones es: **Happy Hour** (solo si hay al menos un plato cuya oferta ganadora es un Happy Hour vigente) → **Combos** → **categorías/productos** en el orden configurado por el dueño. Un plato en Happy Hour también sigue apareciendo en su categoría, con el mismo precio ganador (no se acumulan descuentos). Un Happy Hour nuevo arranca con prioridad `10` y una Promo con `0`, para que durante el horario del Happy Hour gane ese descuento si el dueño no indica lo contrario.
+
 ### 3.3 Ventanas de Vigencia
 
 - **Promo estándar**: definida por una **fecha/hora de inicio** y una **fecha/hora de fin** explícitas (ventana continua, no recurrente). Transiciona automáticamente por los estados: `programada` (fecha de inicio en el futuro) → `activa` (dentro de la ventana) → `expirada` (fecha de fin en el pasado).
 - **Happy Hour**: definida por **uno o más días de la semana** más un **rango horario** (hora de inicio y hora de fin) que se repite indefinidamente cada semana mientras el Happy Hour permanezca habilitado. No tiene una "fecha de fin" en el sentido tradicional; se desactiva mediante un flag de habilitación explícito, no por vencimiento de una fecha concreta.
 - **Evaluación en tiempo real**: la determinación de si una Promo/Happy Hour está actualmente activa debe evaluarse en el **backend**, en el momento de servir el menú (o mediante un proceso periódico de recálculo de estado), nunca confiando en el reloj del dispositivo del comensal, para evitar manipulación del precio mostrado mediante un reloj de dispositivo alterado.
+- **Zona horaria de la sucursal**: Happy Hour y el horario de servicio de productos usan `Branch.timezone` (IANA, por defecto `America/Argentina/Buenos_Aires`). Se edita en `/admin/settings`. No es la zona del servidor ni la del dispositivo del comensal.
 - **Rango horario que cruza la medianoche**: un Happy Hour puede definirse con un rango horario que atraviesa la medianoche (ej. 23:00–01:00); el motor de evaluación debe tratar este caso especial correctamente, considerando dos tramos: desde la hora de inicio hasta las 23:59:59 de un día, y desde las 00:00:00 hasta la hora de fin del día siguiente.
 
 ### 3.4 Cambio del Precio Base Durante una Promo Activa
@@ -98,7 +107,7 @@ Se definen dos comportamientos posibles según el tipo de descuento de la Promo,
 | **Monto fijo** (ej. -$500) | El monto fijo se resta del **nuevo precio base**; si el nuevo precio base es menor al monto fijo de descuento, el sistema debe evitar un precio final negativo, aplicando como mínimo un precio final de $0 o, preferentemente, alertando al administrador para revisión manual. |
 | **Precio fijo promocional** (sobrescribe el precio base) | El precio mostrado **permanece igual al valor fijo promocional configurado**, sin verse afectado por el cambio del precio base del producto, ya que la promo no depende matemáticamente del precio base sino que lo reemplaza directamente. |
 
-En todos los casos, se recomienda que el Panel Admin muestre una notificación informativa al administrador cuando edita el precio base de un producto que tiene promociones activas o programadas, para que sea consciente del impacto combinado antes de confirmar el cambio.
+En todos los casos, el Panel Admin muestra las ofertas que alcanzan un producto en el formulario de edición (`GET /api/v1/admin/engagement/product-offers`), con el precio de lista vs. el precio final y acciones de editar/eliminar. El precio de lista del producto no se modifica al crear o borrar una promo.
 
 ---
 
@@ -141,7 +150,8 @@ sequenceDiagram
 ### 4.2 Requisitos Técnicos de Alto Nivel
 
 - **Tecnología base recomendada**: uso de estándares web abiertos de Realidad Aumentada (familia **WebXR Device API** con el módulo de AR, o librerías complementarias de detección de superficies tipo **AR.js** como capa de compatibilidad en dispositivos/navegadores donde WebXR AR no esté disponible de forma nativa). La elección final de librería específica se define en la fase de implementación técnica, no en este documento de diseño.
-- **Formato del asset visual**: imágenes **PNG o WebP con canal alfa (fondo transparente)**, generadas por el pipeline de recorte de fondo con IA descrito en `domain-modules.md` (dominio Media & AR). No se exige, para el alcance inicial, la generación de modelos 3D completos (`.glb`/`.usdz`); la experiencia se basa en una **proyección plana ("cutout") con perspectiva**, lo cual reduce significativamente la complejidad de producción de contenido para el restaurante (no necesita modelar en 3D cada plato, solo fotografiarlo).
+- **Formato del asset visual**: imágenes **PNG o WebP con canal alfa (fondo transparente)**, generadas por el pipeline de recorte de fondo con IA descrito en `domain-modules.md` (dominio Media & AR). El listado del menú **siempre** usa una imagen 2D liviana (foto de presentación). No se exige, para el alcance inicial, un modelo 3D por plato: la experiencia base es una **proyección plana ("cutout") con perspectiva**.
+- **Capa premium opcional (modelo 3D)**: un producto puede adjuntar, **además** de la foto de presentación, un archivo `.glb`/`.usdz` en un `MediaAsset` distinto (`ProductMedia.role = AR_MODEL`). Ese modelo alimenta el visor AR ("Ver en tu mesa") y **nunca reemplaza** la imagen 2D del listado. Foto y modelo conviven; cada uno se puede quitar por separado desde el panel admin. Como ayuda de UX (el escaneo 3D no es un flujo habitual de un restaurante), el formulario de producto incluye una guía plegable: qué es la experiencia, apps de ejemplo (Polycam, Scaniverse, Luma AI) y el proceso de captura con el celular.
 - **Detección de superficie (plane detection)**: requisito indispensable para lograr que la imagen del producto se "apoye" visualmente sobre la mesa real y no simplemente flote superpuesta sin anclaje espacial.
 - **Rendimiento**: dado que la sesión de AR involucra procesamiento de cámara en tiempo real, se debe optimizar el asset (tamaño de imagen, ausencia de animaciones pesadas) para no degradar el framerate en dispositivos de gama media/baja, coherente con el principio Mobile-First de `architecture.md`.
 
@@ -190,6 +200,7 @@ De forma análoga, un catálogo base de preferencias/estilos dietéticos, tambi�
   - **Productos** (nivel principal de asignación).
   - **Variantes/Opciones** específicas de un producto (ej. una opción "Leche de almendras" dentro del grupo de variante "Tipo de leche" podría anular el alérgeno "Lácteos" que tiene el producto base, o agregar el tag "Vegano" solo para esa combinación específica — este nivel de granularidad se define como **extensión futura**, siendo la asignación a nivel Producto el requisito del MVP).
 - Un Producto puede tener **cero, uno o múltiples tags** de alérgenos y de preferencias dietéticas simultáneamente.
+- El Panel Admin asigna esos tags en el formulario de producto, cargando el catálogo de plataforma con `GET /api/v1/admin/catalog/tags` (`api-contracts.md`).
 - La ausencia de un tag de alérgeno **no debe interpretarse como garantía absoluta de ausencia de ese alérgeno** (contaminación cruzada en cocina, cambios de proveedor, etc.); se recomienda incluir un **disclaimer legal visible** en el menú público indicando que la información es orientativa y que el comensal debe consultar directamente al staff ante alergias severas. Este disclaimer es una decisión de producto/legal a validar, pero se documenta aquí como requisito de la especificación funcional.
 
 ### 5.4 Filtros Instantáneos en el Menú Público
@@ -250,13 +261,15 @@ Campos no traducibles por naturaleza (ej. precios, fechas, colores de marca, URL
 
 ### 7.2 JWT para el Panel Admin
 
-- Todo acceso al Panel Admin (Owners, Admins, Staff) requiere **autenticación mediante JWT**.
-- El token emitido debe incluir, como mínimo (a nivel conceptual de claims, sin especificar formato de implementación):
-  - Identificador del Usuario autenticado.
-  - Identificador del Tenant al que pertenece la sesión activa (relevante si un mismo usuario tuviera acceso a más de un Tenant a futuro).
-  - Rol(es) efectivo(s) del usuario, incluyendo posibles asignaciones diferenciadas por Sucursal (ver `domain-modules.md`, dominio Tenant).
-  - Tiempo de expiración acotado, con mecanismo de renovación (refresh) para no forzar reautenticaciones frecuentes durante una jornada de trabajo del staff.
-- **Cada request administrativa debe validar dos condiciones de forma independiente**: (a) que el JWT sea válido y no haya expirado, y (b) que el Rol codificado en el JWT tenga permiso explícito para la acción/recurso solicitado (autorización granular por Rol, RBAC), rechazando con un error de autorización (no de autenticación) cuando el usuario está autenticado pero no habilitado para esa acción específica.
+- Todo acceso al Panel Admin (`PLATFORM_ADMIN`, Owners, Admins, Staff) requiere **autenticación mediante JWT de aplicación emitido por NestJS**. Supabase Auth no se usa en el MVP (`architecture.md` §2.3).
+- La identidad visual de la carta (nombre comercial, color primario, logo, portada, contacto de sucursal) y el **estado operativo de la sucursal** (`OPEN` / `CLOSED_TEMPORARILY` / `MAINTENANCE`) se editan en `/admin/settings` contra `GET`/`PATCH /api/v1/admin/settings/branch` (`api-contracts.md` §5.10). La sucursal que se edita es la **activa en el panel** (`X-Branch-Id`; alta de locales en `/admin/branches`, `api-contracts.md` §5.12). Al crear un local extra se copia la disponibilidad acotada del catálogo desde otra sucursal del mismo Tenant. Un local cerrado o en mantenimiento muestra un aviso en la carta; **el enlace sigue resolviendo**. Cortar la URL por falta de pago es `Tenant.status = SUSPENDED` desde `/admin/platform` (`PATCH /api/v1/admin/platform/tenants/:id/status`). El logo y el banner se suben (y se pueden quitar) por endpoints de media, no como URLs libres. En el menú público, la cabecera usa la portada como fondo, el logo redondeado, el nombre comercial y atajos a Instagram/WhatsApp; el color primario se inyecta como `--primary-color` en el host de la carta. Dirección y teléfono quedan en un pie discreto. El QR de la sucursal se genera en el cliente en esa misma pantalla, apuntando a `/m/:tenantSlug/:branchSlug`.
+- El token emitido debe incluir, como mínimo (a nivel conceptual de claims, sin especificar formato de implementación; contrato en `api-contracts.md` §4.5):
+  - Identificador del Usuario autenticado (`sub`).
+  - Identificador del Tenant al que pertenece la sesión activa, o `null` si el usuario es `PLATFORM_ADMIN` (operador de plataforma, fuera del aislamiento de un tenant).
+  - Rol(es) efectivo(s) del usuario, incluyendo alcance `PLATFORM` / `TENANT` / `BRANCH` y posibles asignaciones diferenciadas por Sucursal (ver `domain-modules.md`, dominio Tenant).
+  - Tiempo de expiración acotado (~15 min), con mecanismo de renovación (refresh token **opaco**, rotativo, entregado en cookie `HttpOnly` + `Secure` + `SameSite=Strict`) para no forzar reautenticaciones frecuentes durante una jornada de trabajo del staff.
+- El `accessToken` vive solo en memoria en el cliente (`AuthStore`); nunca en `localStorage`.
+- **Cada request administrativa debe validar dos condiciones de forma independiente**: (a) que el JWT sea válido y no haya expirado, y (b) que el Rol codificado en el JWT tenga permiso explícito para la acción/recurso solicitado (autorización granular por Rol, RBAC), rechazando con un error de autorización (no de autenticación) cuando el usuario está autenticado pero no habilitado para esa acción específica. El `tenantId` operable de un usuario de tenant sale **solo** de los claims, nunca del body/params.
 
 ### 7.3 Rate Limiting en Endpoints Públicos
 
@@ -276,9 +289,9 @@ Campos no traducibles por naturaleza (ej. precios, fechas, colores de marca, URL
 ### 7.5 Protección de Endpoints de Analytics (Anti-Fraude)
 
 - Los endpoints que reciben `ScanEvent` e `InteractionEvent` (ver `domain-modules.md`, dominio Analytics) requieren controles adicionales más allá del rate limiting genérico, dado que son un vector directo de manipulación de métricas que los tenants usan para tomar decisiones de negocio:
-  - **Validación de pertenencia**: el evento reportado debe referenciar una entidad (Producto, Categoría, Promo) que efectivamente exista y pertenezca al Tenant/Sucursal indicado en el mismo evento, rechazando referencias cruzadas inconsistentes.
-  - **Deduplicación por sesión anónima**: múltiples eventos idénticos (mismo tipo, misma entidad, mismo origen de sesión) en una ventana de tiempo muy corta se consolidan como un único evento efectivo, mitigando tanto bugs de doble-click como intentos deliberados de inflar métricas.
-  - **Límite de eventos por sesión anónima**: una sesión no puede generar un volumen de eventos irrazonablemente alto en un período corto, lo cual sería indicativo de un script automatizado en lugar de un comensal real navegando el menú.
+  - **Validación de pertenencia**: el tenant/sucursal salen de la ruta pública, no del body. Un `AR_VIEW_CLICK` referencia un producto que existe en ese Tenant.
+  - **Deduplicación por sesión anónima**: un `scan` por `sessionId` (carga de página) y sucursal; search/filter/AR iguales en una ventana corta; `SESSION_DWELL` conserva el mayor `durationMs`. Un refresh del navegador es otra visita.
+  - **Límite de eventos por sesión anónima**: una sesión no puede generar un volumen de eventos irrazonablemente alto en un período corto, lo cual sería indicativo de un script automatizado en lugar de un comensal real navegando el menú. El corte actual cubre dedup + `ThrottlerGuard` por IP/`Plan.rateLimitPerMinute`; el tope extra por `sessionId` queda para después.
 
 ### 7.6 CORS y Consideraciones Multi-Tenant en Dominios
 
@@ -302,7 +315,7 @@ Campos no traducibles por naturaleza (ej. precios, fechas, colores de marca, URL
 | 7 | WebAR usa imágenes 2D con fondo transparente (no requiere modelos 3D) con fallback progresivo de 3 niveles | Media & AR |
 | 8 | Filtrado de alérgenos/dietas es 100% client-side para respuesta instantánea | Catalog / Frontend |
 | 9 | Traducciones son manuales con asistencia opcional de traducción automática revisable | i18n |
-| 10 | Menú público sin autenticación; Panel Admin con JWT + RBAC | Seguridad |
+| 10 | Menú público sin autenticación; Panel Admin con JWT de NestJS + RBAC (`PLATFORM_ADMIN` / `OWNER` / `ADMIN` / `STAFF`); refresh en cookie HttpOnly | Seguridad |
 | 11 | Rate limiting diferenciado por Plan, con controles anti-fraude específicos en Analytics | Seguridad / Tenant |
 | 12 | CORS con validación dinámica de origen por Tenant (subdominios y dominios personalizados) | Seguridad / Tenant |
 

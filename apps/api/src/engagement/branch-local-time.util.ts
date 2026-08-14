@@ -85,3 +85,23 @@ export function isWithinMinuteWindow(
   }
   return minuteOfDay >= startMinuteOfDay || minuteOfDay < endMinuteOfDay;
 }
+
+export function isHappyHourActiveNow(
+  happyHour: {
+    readonly daysOfWeek: readonly DayOfWeek[];
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  },
+  timezone: string,
+  now: Date,
+): boolean {
+  const { dayOfWeek, minuteOfDay } = resolveBranchLocalMoment(now, timezone);
+  if (!happyHour.daysOfWeek.includes(dayOfWeek)) {
+    return false;
+  }
+  return isWithinMinuteWindow(
+    minuteOfDay,
+    happyHour.startMinuteOfDay,
+    happyHour.endMinuteOfDay,
+  );
+}

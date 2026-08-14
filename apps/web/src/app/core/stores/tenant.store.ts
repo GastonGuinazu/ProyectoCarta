@@ -59,13 +59,8 @@ export class TenantStore {
   }
 
   /**
-   * `tenant`/`features` aceptan `null`: el backend actual (`PublicMenuModule`,
-   * ver apps/api) todavía solo resuelve datos básicos de Sucursal, no de branding
-   * de Tenant ni de flags de plan (`docs/api-contracts.md` §3.5 completo queda
-   * pendiente de `CatalogModule`/`EngagementModule`/`MediaModule`). El estado
-   * pasa a `resolved` igual, porque la ruta en sí sí se resolvió correctamente
-   * (el backend respondió 200): lo que falta es el resto del payload, no la
-   * resolución del tenant/sucursal.
+   * `tenant`/`features`: `tenant` ya incluye branding (`primaryColor`, `logoUrl`).
+   * `features` de plan sigue pendiente. El estado pasa a `resolved` con 200.
    */
   setResolved(data: {
     tenant: TenantBranding | null;

@@ -14,6 +14,10 @@ coverage/
 .env.*
 !.env.example
 
+# Hosting CLI caches
+.vercel
+.railway
+
 # OS files
 .DS_Store
 Thumbs.db

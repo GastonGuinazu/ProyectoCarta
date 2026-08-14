@@ -1,0 +1,59 @@
+<div class="flex min-h-screen items-center justify-center bg-neutral-50 px-4 py-8">
+  <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-sm ring-1 ring-neutral-100 sm:p-8">
+    <h1 class="text-xl font-bold text-neutral-900">Panel de administración</h1>
+    <p class="mt-1 text-sm text-neutral-500">Ingresá con tu email y contraseña.</p>
+
+    <form class="mt-6 flex flex-col gap-4" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+      <label class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium text-neutral-700">Email</span>
+        <input
+          type="email"
+          formControlName="email"
+          autocomplete="username"
+          class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+          [class.border-rose-400]="form.controls.email.touched && form.controls.email.invalid"
+        />
+        @if (form.controls.email.touched && form.controls.email.invalid) {
+          <span class="text-xs text-rose-600">Ingresá un email válido.</span>
+        }
+      </label>
+
+      <label class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium text-neutral-700">Contraseña</span>
+        <input
+          type="password"
+          formControlName="password"
+          autocomplete="current-password"
+          class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+          [class.border-rose-400]="form.controls.password.touched && form.controls.password.invalid"
+        />
+        @if (form.controls.password.touched && form.controls.password.invalid) {
+          <span class="text-xs text-rose-600">La contraseña es obligatoria.</span>
+        }
+      </label>
+
+      @if (loginError()) {
+        <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          {{ loginError() }}
+        </p>
+      }
+
+      <button
+        type="submit"
+        class="mt-2 min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        [disabled]="pending()"
+      >
+        @if (pending()) {
+          Ingresando…
+        } @else {
+          Ingresar
+        }
+      </button>
+    </form>
+
+    <p class="mt-4 text-center text-xs text-neutral-500">
+      Si olvidaste la contraseña, pedile a quien te dio de alta que la resetee
+      desde Gestión Global.
+    </p>
+  </div>
+</div>

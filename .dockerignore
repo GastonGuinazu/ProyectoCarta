@@ -1,0 +1,16 @@
+# Build context is the monorepo root. Do not send the Angular app sources
+# (only apps/web/package.json is needed so npm ci matches the lockfile).
+.git
+**/.angular
+**/coverage
+**/dist
+**/node_modules
+**/*.md
+apps/web/**
+!apps/web/package.json
+.env
+.env.*
+!.env.example
+*.log
+canvases
+.cursor

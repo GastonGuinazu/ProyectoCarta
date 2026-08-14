@@ -1,0 +1,128 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-neutral-900">Métricas</h1>
+      <p class="mt-1 text-sm text-neutral-500">
+        Carta de {{ activeBranchName() }}. Cada recarga cuenta como visita.
+        “Se quedaron” son quienes estuvieron 30 segundos o más.
+      </p>
+    </div>
+    <div class="flex gap-2">
+      <button
+        type="button"
+        class="min-h-11 rounded-full px-4 text-sm font-semibold"
+        [class.bg-neutral-900]="periodDays() === 7"
+        [class.text-white]="periodDays() === 7"
+        [class.text-neutral-700]="periodDays() !== 7"
+        [class.ring-1]="periodDays() !== 7"
+        [class.ring-neutral-200]="periodDays() !== 7"
+        (click)="setPeriod(7)"
+      >
+        7 días
+      </button>
+      <button
+        type="button"
+        class="min-h-11 rounded-full px-4 text-sm font-semibold"
+        [class.bg-neutral-900]="periodDays() === 30"
+        [class.text-white]="periodDays() === 30"
+        [class.text-neutral-700]="periodDays() !== 30"
+        [class.ring-1]="periodDays() !== 30"
+        [class.ring-neutral-200]="periodDays() !== 30"
+        (click)="setPeriod(30)"
+      >
+        30 días
+      </button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="flex justify-center py-16">
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+    </div>
+  } @else if (loadError()) {
+    <p class="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+      {{ loadError() }}
+    </p>
+  } @else {
+    @if (summary(); as data) {
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5">
+        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Visitas</p>
+        <p class="mt-2 text-2xl font-bold text-neutral-900">{{ data.visits }}</p>
+        <p class="mt-1 text-xs text-neutral-500">Aperturas de la carta</p>
+      </article>
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5">
+        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Se quedaron</p>
+        <p class="mt-2 text-2xl font-bold text-neutral-900">{{ stayedPercent(data) }}</p>
+        <p class="mt-1 text-xs text-neutral-500">
+          {{ data.stayedCount }} visitas de más de 30 segundos
+        </p>
+      </article>
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5">
+        <p class="text-xs font-semibold uppercase tracking-wide text-neutral-500">Tiempo medio</p>
+        <p class="mt-2 text-2xl font-bold text-neutral-900">
+          {{ formatDuration(data.averageDwellSeconds) }}
+        </p>
+        <p class="mt-1 text-xs text-neutral-500">En la carta, entre quienes se quedaron un rato</p>
+      </article>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5">
+        <h2 class="text-sm font-semibold text-neutral-900">Búsquedas</h2>
+        @if (data.searches.length === 0) {
+          <p class="mt-3 text-sm text-neutral-500">Todavía no hay búsquedas en este período.</p>
+        } @else {
+          <ul class="mt-3 flex flex-col gap-2">
+            @for (item of data.searches; track item.query) {
+              <li class="flex items-center justify-between gap-3 text-sm">
+                <span class="truncate text-neutral-800">“{{ item.query }}”</span>
+                <span class="shrink-0 font-semibold text-neutral-900">{{ item.count }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </article>
+
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5">
+        <h2 class="text-sm font-semibold text-neutral-900">Filtros</h2>
+        @if (data.allergenFilters.length === 0 && data.dietaryFilters.length === 0) {
+          <p class="mt-3 text-sm text-neutral-500">Nadie aplicó filtros todavía.</p>
+        } @else {
+          <ul class="mt-3 flex flex-col gap-2">
+            @for (item of data.allergenFilters; track item.id) {
+              <li class="flex items-center justify-between gap-3 text-sm">
+                <span class="truncate text-neutral-800">Sin {{ item.name }}</span>
+                <span class="shrink-0 font-semibold text-neutral-900">{{ item.count }}</span>
+              </li>
+            }
+            @for (item of data.dietaryFilters; track item.id) {
+              <li class="flex items-center justify-between gap-3 text-sm">
+                <span class="truncate text-neutral-800">{{ item.name }}</span>
+                <span class="shrink-0 font-semibold text-neutral-900">{{ item.count }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </article>
+
+      <article class="rounded-2xl bg-white p-4 ring-1 ring-neutral-100 sm:p-5 lg:col-span-2">
+        <h2 class="text-sm font-semibold text-neutral-900">Ver en tu mesa (3D)</h2>
+        <p class="mt-1 text-xs text-neutral-500">{{ data.arViews.total }} aperturas en total</p>
+        @if (data.arViews.products.length === 0) {
+          <p class="mt-3 text-sm text-neutral-500">Nadie abrió un modelo 3D en este período.</p>
+        } @else {
+          <ul class="mt-3 flex flex-col gap-2">
+            @for (item of data.arViews.products; track item.id) {
+              <li class="flex items-center justify-between gap-3 text-sm">
+                <span class="truncate text-neutral-800">{{ item.name }}</span>
+                <span class="shrink-0 font-semibold text-neutral-900">{{ item.count }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </article>
+    </div>
+    }
+  }
+</section>

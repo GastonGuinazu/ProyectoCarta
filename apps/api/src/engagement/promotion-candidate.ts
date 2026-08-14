@@ -122,7 +122,7 @@ export function toActivePromotionNode(
   };
 }
 
-function computeFinalPriceCents(
+export function computeFinalPriceCents(
   candidate: PromotionCandidate,
   basePriceCents: number,
 ): number {

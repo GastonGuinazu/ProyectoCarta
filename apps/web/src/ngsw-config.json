@@ -39,7 +39,10 @@
     },
     {
       "name": "menu-api-raw",
-      "urls": ["/api/v1/menu/public/**"],
+      "urls": [
+        "/api/v1/menu/public/**",
+        "**/api/v1/menu/public/**"
+      ],
       "cacheConfig": {
         "strategy": "freshness",
         "maxSize": 50,

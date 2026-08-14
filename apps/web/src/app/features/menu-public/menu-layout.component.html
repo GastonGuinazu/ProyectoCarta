@@ -1,12 +1,12 @@
 @switch (resolutionStatus()) {
   @case ('idle') {
     <div class="flex min-h-screen items-center justify-center bg-neutral-50">
-      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-[var(--primary-color)]"></div>
     </div>
   }
   @case ('resolving') {
     <div class="flex min-h-screen items-center justify-center bg-neutral-50">
-      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-[var(--primary-color)]"></div>
     </div>
   }
   @case ('notFound') {
@@ -28,7 +28,7 @@
       <button
         type="button"
         (click)="reload()"
-        class="mt-2 rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white"
+        class="mt-2 rounded-full bg-[var(--primary-color)] px-5 py-2 text-sm font-semibold text-[var(--primary-contrast)]"
       >
         Reintentar
       </button>
@@ -36,24 +36,125 @@
   }
   @case ('resolved') {
     <div class="flex min-h-screen flex-col bg-neutral-50">
-      <header
-        class="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 text-white shadow-md"
-        [style.backgroundColor]="brandColor()"
-      >
-        @if (logoUrl()) {
-          <img [ngSrc]="logoUrl()!" [alt]="headerTitle()" width="36" height="36" class="rounded-full object-cover" />
+      <header class="relative isolate min-h-36 overflow-hidden text-white">
+        @if (bannerUrl(); as banner) {
+          <div class="absolute inset-0">
+            <img
+              [ngSrc]="banner"
+              fill
+              priority
+              sizes="100vw"
+              [alt]="headerTitle()"
+              class="object-cover object-center"
+            />
+            <div class="absolute inset-0 bg-neutral-950/50"></div>
+          </div>
+        } @else {
+          <div class="absolute inset-0" [style.backgroundColor]="brandColor()"></div>
         }
-        <div class="flex flex-col leading-tight">
-          <span class="text-base font-bold">{{ headerTitle() }}</span>
-          @if (branchName() && branchName() !== headerTitle()) {
-            <span class="text-xs opacity-80">{{ branchName() }}</span>
+
+        <div class="relative z-10 flex min-h-36 items-end gap-3 px-4 pb-4 pt-10">
+          @if (logoUrl()) {
+            <img
+              [ngSrc]="logoUrl()!"
+              [alt]="headerTitle()"
+              width="64"
+              height="64"
+              class="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white shadow-md"
+            />
           }
+          <div class="min-w-0 flex-1 leading-tight">
+            <h1 class="text-lg font-bold drop-shadow-sm">{{ headerTitle() }}</h1>
+            @if (branchName() && branchName() !== headerTitle()) {
+              <p class="mt-0.5 text-xs text-white/80">{{ branchName() }}</p>
+            }
+          </div>
+          <div class="flex shrink-0 items-center gap-1 pb-0.5">
+            @if (instagram(); as ig) {
+              <a
+                class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm"
+                [href]="instagramLink(ig)"
+                target="_blank"
+                rel="noopener noreferrer"
+                [attr.aria-label]="instagramText(ig)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" class="h-5 w-5" aria-hidden="true">
+                  <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+                  <circle cx="12" cy="12" r="4" />
+                  <circle cx="17.4" cy="6.6" r="0.9" fill="currentColor" stroke="none" />
+                </svg>
+              </a>
+            }
+            @if (whatsapp(); as whatsappNumber) {
+              <a
+                class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur-sm"
+                [href]="whatsappLink(whatsappNumber)"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="WhatsApp"
+              >
+                <svg viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5" aria-hidden="true">
+                  <path
+                    d="M12.04 3.5A8.5 8.5 0 0 0 4.3 15.7L3.5 20.5l4.9-.8A8.5 8.5 0 1 0 12.04 3.5Zm4.86 12.05c-.2.57-1.18 1.05-1.64 1.12-.42.06-.95.09-1.54-.1-.35-.11-.8-.26-1.38-.51-2.43-1.05-4.01-3.5-4.13-3.66-.12-.16-1-1.33-1-2.54 0-1.2.63-1.79.85-2.03.22-.24.48-.3.64-.3h.46c.15 0 .35-.06.54.41.2.5.68 1.66.74 1.78.06.12.1.26.02.42-.08.16-.12.26-.24.4-.12.14-.25.31-.36.42-.12.12-.24.24-.1.47.14.24.62 1.02 1.33 1.65.91.82 1.68 1.07 1.92 1.19.24.12.38.1.52-.06.14-.16.6-.7.76-.94.16-.24.32-.2.54-.12.22.08 1.4.66 1.64.78.24.12.4.18.46.28.06.1.06.57-.14 1.14Z"
+                  />
+                </svg>
+              </a>
+            }
+          </div>
         </div>
       </header>
 
+      @if (branchStatusNotice(); as notice) {
+        <div class="border-b border-amber-200 bg-amber-50 px-4 py-3 text-amber-950" role="status">
+          <p class="text-sm font-semibold">{{ notice.title }}</p>
+          <p class="mt-0.5 text-xs text-amber-800">{{ notice.body }}</p>
+        </div>
+      }
+
+      <div class="sticky top-0 z-20 border-b border-neutral-200 bg-white/95 backdrop-blur-sm">
+        <app-category-nav />
+        <app-dish-search />
+        <app-filter-bar />
+      </div>
+
       <main class="flex-1">
+        @if (happyHourProducts().length > 0) {
+          <section [id]="happyHourSectionId" class="scroll-mt-36 px-4 pt-4">
+            <h2 class="mb-3 text-lg font-bold text-neutral-900">Happy Hour</h2>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              @for (product of happyHourProducts(); track product.id) {
+        <app-product-card [product]="product" (arOpened)="onArOpened(product.id)" />
+              }
+            </div>
+          </section>
+        }
+
+        @if (filteredCombos().length > 0) {
+          <section [id]="combosSectionId" class="scroll-mt-36 px-4 pt-4">
+            <h2 class="mb-3 text-lg font-bold text-neutral-900">Combos</h2>
+            <div class="flex flex-col gap-3">
+              @for (combo of filteredCombos(); track combo.id) {
+                <app-combo-card [combo]="combo" />
+              }
+            </div>
+          </section>
+        }
+
         <app-category-list />
       </main>
+
+      @if (hasFooterContact()) {
+        <footer class="mt-auto border-t border-neutral-200 bg-white px-4 py-3 text-neutral-600">
+          @if (address(); as addr) {
+            <p class="text-xs leading-snug">{{ addr }}</p>
+          }
+          @if (phone(); as phoneNumber) {
+            <a class="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-neutral-800" [href]="phoneHref(phoneNumber)">
+              {{ phoneNumber }}
+            </a>
+          }
+        </footer>
+      }
     </div>
   }
 }

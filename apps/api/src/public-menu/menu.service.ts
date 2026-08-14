@@ -10,59 +10,43 @@ import { EngagementService } from '../engagement/engagement.service';
 import { MediaService } from '../media/media.service';
 import type { BranchDetails } from '../tenant/branch/branch-details.type';
 import { BranchService } from '../tenant/branch/branch.service';
+import type { PublicTenantBranding } from '../tenant/settings/admin-settings.types';
+import { TenantService } from '../tenant/tenant.service';
 import { applyActivePromotions } from './apply-active-promotions.util';
 import { applyMediaUrls } from './apply-media-urls.util';
+import { applyServingHours } from './apply-serving-hours.util';
 
 /**
- * Forma parcial de la respuesta del menú público (docs/api-contracts.md §3.5).
- * Incluye `branch`, `categories` (árbol completo con productos, variantes,
- * imágenes/WebAR ya resueltas y referencias de alérgenos/tags dietéticos),
- * `combos` (agrupaciones de productos vigentes en la sucursal, con su propia
- * imagen resuelta) y `catalogs` (resolución de esas referencias a
- * `Allergen`/`DietaryTag`, globales a la plataforma). Falta agregar `meta` y
- * `tenant.branding`, fuera del alcance de este ticket.
+ * Forma de la respuesta del menú público (docs/api-contracts.md §3.5).
+ * Incluye `tenant.branding`, `branch`, catálogo y combos.
  */
 export interface PublicMenuResponse {
+  readonly tenant: PublicTenantBranding;
   readonly branch: BranchDetails;
   readonly categories: readonly CategoryTreeNode[];
   readonly combos: readonly ComboNode[];
   readonly catalogs: PlatformCatalogs;
 }
 
-/**
- * `PublicMenuModule` no contiene lógica de negocio propia: solo orquesta los
- * servicios de lectura de los módulos de dominio (docs/backend-architecture.md
- * §2.3, punto 4). Hoy orquesta `TenantModule.BranchService`,
- * `CatalogModule.CatalogService`, `EngagementModule.EngagementService` y
- * `MediaModule.MediaService`.
- *
- * Dos "cruces" se hacen acá, en orden, cada uno una función pura que solo
- * recorre el árbol y delega la decisión en el dominio correspondiente:
- * 1. `applyMediaUrls`: reemplaza `imageUrl`/`images`/`webAr` (todavía en su
- *    valor vacío honesto al salir de `CatalogService`) por las URLs
- *    resueltas en batch por `MediaService.resolveMediaAssets` — ver la
- *    estrategia anti-N+1 explicada al usuario antes de este código.
- * 2. `applyActivePromotions`: reemplaza `activePromotion` usando el resolver
- *    de `EngagementService` (detalle de prioridad/especificidad/recencia en
- *    `engagement.service.ts`).
- * El orden entre ambos no importa: tocan campos disjuntos de cada nodo.
- */
 @Injectable()
 export class MenuService {
   constructor(
     private readonly branchService: BranchService,
+    private readonly tenantService: TenantService,
     private readonly catalogService: CatalogService,
     private readonly engagementService: EngagementService,
     private readonly mediaService: MediaService,
   ) {}
 
-  async getPublicMenu(branchId: string): Promise<PublicMenuResponse> {
-    const branch = await this.branchService.getBranchDetails(branchId);
-    if (!branch) {
-      // No debería ocurrir en la práctica: el TenantResolutionGuard ya validó que
-      // la Sucursal existe antes de llegar acá. Se mantiene por defensa en
-      // profundidad (ej. la fila fue borrada entre la resolución del Guard y esta
-      // llamada) y para no filtrar información sobre cuál paso falló.
+  async getPublicMenu(
+    tenantId: string,
+    branchId: string,
+  ): Promise<PublicMenuResponse> {
+    const [branch, tenant] = await Promise.all([
+      this.branchService.getBranchDetails(branchId),
+      this.tenantService.findPublicBranding(tenantId),
+    ]);
+    if (!branch || !tenant) {
       throw new TenantOrBranchNotFoundException();
     }
 
@@ -80,6 +64,7 @@ export class MenuService {
     const allMediaAssetIds = [
       ...catalogResult.categoryImageAssetIds.values(),
       ...catalogResult.productPrimaryAssetIds.values(),
+      ...catalogResult.productArModelAssetIds.values(),
       ...comboResult.comboImageAssetIds.values(),
     ];
 
@@ -98,6 +83,7 @@ export class MenuService {
       {
         categoryImageAssetIds: catalogResult.categoryImageAssetIds,
         productPrimaryAssetIds: catalogResult.productPrimaryAssetIds,
+        productArModelAssetIds: catalogResult.productArModelAssetIds,
         comboImageAssetIds: comboResult.comboImageAssetIds,
       },
       resolvedMedia,
@@ -109,9 +95,16 @@ export class MenuService {
       promotionsResolver,
     );
 
+    const categories = applyServingHours(
+      catalogWithPromotions.categories,
+      branch.timezone,
+      new Date(),
+    );
+
     return {
+      tenant,
       branch,
-      categories: catalogWithPromotions.categories,
+      categories,
       combos: catalogWithPromotions.combos,
       catalogs,
     };

@@ -1,0 +1,108 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5">
+    <h1 class="text-lg font-bold text-neutral-900">Cuenta</h1>
+    <p class="mt-1 text-sm text-neutral-500">
+      Sesión de
+      <span class="font-medium text-neutral-800">{{ currentUser()?.email }}</span>.
+    </p>
+  </div>
+
+  <form
+    class="max-w-md rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6"
+    [formGroup]="form"
+    (ngSubmit)="submit()"
+    novalidate
+  >
+    <h2 class="text-base font-bold text-neutral-900">Cambiar contraseña</h2>
+    <p class="mt-1 text-sm text-neutral-500">
+      Las otras sesiones (otro celular o computadora) se cierran. Esta sigue abierta.
+    </p>
+
+    <div class="mt-5 flex flex-col gap-4">
+      <label class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium text-neutral-700">Contraseña actual</span>
+        <input
+          type="password"
+          formControlName="currentPassword"
+          autocomplete="current-password"
+          class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+          [class.border-rose-400]="
+            form.controls.currentPassword.touched && form.controls.currentPassword.invalid
+          "
+        />
+        @if (
+          form.controls.currentPassword.touched &&
+          form.controls.currentPassword.hasError('required')
+        ) {
+          <span class="text-xs text-rose-600">Ingresá tu contraseña actual.</span>
+        }
+      </label>
+
+      <label class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium text-neutral-700">Contraseña nueva</span>
+        <input
+          type="password"
+          formControlName="newPassword"
+          autocomplete="new-password"
+          class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+          [class.border-rose-400]="
+            form.controls.newPassword.touched && form.controls.newPassword.invalid
+          "
+        />
+        @if (
+          form.controls.newPassword.touched &&
+          form.controls.newPassword.hasError('required')
+        ) {
+          <span class="text-xs text-rose-600">Ingresá una contraseña nueva.</span>
+        } @else if (
+          form.controls.newPassword.touched &&
+          form.controls.newPassword.hasError('minlength')
+        ) {
+          <span class="text-xs text-rose-600">Mínimo 8 caracteres.</span>
+        }
+      </label>
+
+      <label class="flex flex-col gap-1.5">
+        <span class="text-sm font-medium text-neutral-700">Repetí la contraseña nueva</span>
+        <input
+          type="password"
+          formControlName="confirmPassword"
+          autocomplete="new-password"
+          class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+          [class.border-rose-400]="
+            form.controls.confirmPassword.touched &&
+            (form.controls.confirmPassword.invalid || form.hasError('passwordMismatch'))
+          "
+        />
+        @if (
+          form.controls.confirmPassword.touched &&
+          form.controls.confirmPassword.hasError('required')
+        ) {
+          <span class="text-xs text-rose-600">Repetí la contraseña nueva.</span>
+        } @else if (form.controls.confirmPassword.touched && form.hasError('passwordMismatch')) {
+          <span class="text-xs text-rose-600">Las contraseñas no coinciden.</span>
+        }
+      </label>
+
+      @if (saveNotice(); as notice) {
+        <p class="rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
+          {{ notice }}
+        </p>
+      }
+
+      @if (saveError(); as error) {
+        <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+          {{ error }}
+        </p>
+      }
+
+      <button
+        type="submit"
+        class="mt-1 min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+        [disabled]="saving()"
+      >
+        {{ saving() ? 'Guardando…' : 'Cambiar contraseña' }}
+      </button>
+    </div>
+  </form>
+</section>

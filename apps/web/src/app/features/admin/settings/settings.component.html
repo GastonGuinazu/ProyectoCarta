@@ -1,0 +1,413 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5">
+    <h1 class="text-lg font-bold text-neutral-900">Configuración</h1>
+    <p class="mt-1 text-sm text-neutral-500">
+      Identidad visual, contacto y estado de tu sucursal.
+    </p>
+  </div>
+
+  @if (loading()) {
+    <div class="flex justify-center py-16">
+      <div
+        class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+      ></div>
+    </div>
+  } @else if (loadError()) {
+    <p class="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+      {{ loadError() }}
+    </p>
+  } @else {
+    <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+      <form
+        class="min-w-0 flex-1 rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6"
+        [formGroup]="form"
+        (ngSubmit)="onSubmit()"
+        novalidate
+      >
+        <fieldset class="flex flex-col gap-4" [disabled]="saving()">
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Nombre comercial</span>
+            <input
+              type="text"
+              formControlName="commercialName"
+              maxlength="120"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+              [class.border-rose-400]="
+                form.controls.commercialName.touched && form.controls.commercialName.invalid
+              "
+            />
+            @if (
+              form.controls.commercialName.touched &&
+              form.controls.commercialName.hasError('required')
+            ) {
+              <span class="text-xs text-rose-600">El nombre comercial es obligatorio.</span>
+            }
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Teléfono</span>
+            <input
+              type="tel"
+              formControlName="phone"
+              maxlength="40"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">WhatsApp</span>
+            <input
+              type="tel"
+              formControlName="whatsapp"
+              maxlength="40"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Instagram</span>
+            <input
+              type="text"
+              formControlName="instagram"
+              maxlength="255"
+              placeholder="@tu_restaurante"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Dirección</span>
+            <input
+              type="text"
+              formControlName="address"
+              maxlength="255"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            />
+          </label>
+
+          <label class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Zona horaria</span>
+            <select
+              formControlName="timezone"
+              class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+            >
+              @for (option of timezoneSelectOptions(); track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+            <span class="text-xs text-neutral-500">
+              Happy Hour, el horario de cada plato y “ahora” en la carta usan la hora de este local, no la del celular del comensal ni la del servidor.
+            </span>
+          </label>
+
+          <div class="flex flex-col gap-1.5">
+            <span class="text-sm font-medium text-neutral-700">Color de marca</span>
+            <div class="flex items-center gap-3">
+              <input
+                type="color"
+                formControlName="accentColor"
+                class="h-11 w-14 cursor-pointer rounded-xl border border-neutral-200 bg-white p-1"
+                [attr.aria-label]="'Color de marca'"
+              />
+              <input
+                type="text"
+                maxlength="7"
+                class="min-h-11 w-28 rounded-xl border border-neutral-200 bg-white px-3 font-mono text-sm uppercase text-neutral-900 outline-none ring-neutral-900 focus:ring-2"
+                [value]="form.controls.accentColor.value"
+                (change)="onAccentTyped($event)"
+              />
+            </div>
+            <span class="text-xs text-neutral-500">
+              Se usa en botones y acentos de la carta pública.
+            </span>
+          </div>
+
+          <fieldset class="flex flex-col gap-2">
+            <legend class="text-sm font-medium text-neutral-700">Estado de la sucursal</legend>
+            <p class="text-xs text-neutral-500">
+              Avisa en la carta si el local está cerrado o en obras. El enlace del QR sigue funcionando.
+            </p>
+            <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-neutral-50">
+              <input
+                type="radio"
+                formControlName="operationalStatus"
+                value="OPEN"
+                class="mt-1 h-4 w-4 accent-neutral-900"
+              />
+              <span>
+                <span class="block text-sm font-medium text-neutral-800">Abierta</span>
+                <span class="block text-xs text-neutral-500">La carta se muestra con normalidad.</span>
+              </span>
+            </label>
+            <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-neutral-50">
+              <input
+                type="radio"
+                formControlName="operationalStatus"
+                value="CLOSED_TEMPORARILY"
+                class="mt-1 h-4 w-4 accent-neutral-900"
+              />
+              <span>
+                <span class="block text-sm font-medium text-neutral-800">Cerrada temporalmente</span>
+                <span class="block text-xs text-neutral-500">Vacaciones, feriado o cierre puntual.</span>
+              </span>
+            </label>
+            <label class="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl px-2 py-2 hover:bg-neutral-50">
+              <input
+                type="radio"
+                formControlName="operationalStatus"
+                value="MAINTENANCE"
+                class="mt-1 h-4 w-4 accent-neutral-900"
+              />
+              <span>
+                <span class="block text-sm font-medium text-neutral-800">En mantenimiento</span>
+                <span class="block text-xs text-neutral-500">Obras o refacción del local.</span>
+              </span>
+            </label>
+          </fieldset>
+        </fieldset>
+
+        @if (saveError()) {
+          <p class="mt-4 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ saveError() }}
+          </p>
+        }
+
+        <div class="mt-6 flex justify-end">
+          <button
+            type="submit"
+            class="min-h-11 rounded-full bg-neutral-900 px-5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            [disabled]="saving() || loading()"
+          >
+            {{ saving() ? 'Guardando…' : 'Guardar cambios' }}
+          </button>
+        </div>
+      </form>
+
+      <aside class="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
+        <div
+          class="relative flex aspect-square flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white p-5 text-center transition-colors"
+          [class.border-neutral-900]="isDragOver() === 'logo'"
+          [class.bg-neutral-50]="isDragOver() === 'logo'"
+          [class.border-neutral-200]="isDragOver() !== 'logo'"
+          (dragover)="onDragOver($event, 'logo')"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event, 'logo')"
+        >
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Logo
+            <span class="font-medium normal-case tracking-normal text-neutral-400"> (1:1)</span>
+          </p>
+          @if (uploadingSlot() === 'logo' || removingSlot() === 'logo') {
+            <div
+              class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+            ></div>
+            <p class="mt-2 text-sm font-medium text-neutral-600">
+              {{ removingSlot() === 'logo' ? 'Quitando…' : 'Subiendo…' }}
+            </p>
+          } @else {
+            @if (logoPreview(); as url) {
+              <img
+                [src]="url"
+                alt="Logo del restaurante"
+                class="mb-3 max-h-36 w-full rounded-xl bg-neutral-50 object-contain"
+              />
+              <div class="flex flex-col items-center gap-2">
+                <label class="cursor-pointer text-xs font-semibold text-neutral-700 underline">
+                  Reemplazar logo
+                  <input
+                    type="file"
+                    class="sr-only"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    (change)="onFileSelected($event, 'logo')"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                  (click)="askRemove('logo')"
+                >
+                  Quitar logo
+                </button>
+              </div>
+            } @else {
+              <p class="text-sm font-medium text-neutral-700">Logo cuadrado</p>
+              <p class="mt-1 text-xs text-neutral-400">JPG, PNG o WebP. Máx. 10 MB.</p>
+              <label
+                class="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-full bg-neutral-900 px-4 text-xs font-semibold text-white"
+              >
+                Elegir logo
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept=".jpg,.jpeg,.png,.webp"
+                  (change)="onFileSelected($event, 'logo')"
+                />
+              </label>
+            }
+          }
+        </div>
+
+        <div
+          class="relative flex aspect-video flex-col items-center justify-center rounded-2xl border-2 border-dashed bg-white p-5 text-center transition-colors"
+          [class.border-neutral-900]="isDragOver() === 'banner'"
+          [class.bg-neutral-50]="isDragOver() === 'banner'"
+          [class.border-neutral-200]="isDragOver() !== 'banner'"
+          (dragover)="onDragOver($event, 'banner')"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event, 'banner')"
+        >
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+            Portada
+            <span class="font-medium normal-case tracking-normal text-neutral-400"> (16:9)</span>
+          </p>
+          @if (uploadingSlot() === 'banner' || removingSlot() === 'banner') {
+            <div
+              class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"
+            ></div>
+            <p class="mt-2 text-sm font-medium text-neutral-600">
+              {{ removingSlot() === 'banner' ? 'Quitando…' : 'Subiendo…' }}
+            </p>
+          } @else {
+            @if (bannerPreview(); as url) {
+              <img
+                [src]="url"
+                alt="Portada de la carta"
+                class="mb-3 max-h-28 w-full rounded-xl bg-neutral-50 object-cover"
+              />
+              <div class="flex flex-col items-center gap-2">
+                <label class="cursor-pointer text-xs font-semibold text-neutral-700 underline">
+                  Reemplazar portada
+                  <input
+                    type="file"
+                    class="sr-only"
+                    accept=".jpg,.jpeg,.png,.webp"
+                    (change)="onFileSelected($event, 'banner')"
+                  />
+                </label>
+                <button
+                  type="button"
+                  class="text-xs font-semibold text-rose-600 hover:text-rose-700"
+                  (click)="askRemove('banner')"
+                >
+                  Quitar portada
+                </button>
+              </div>
+            } @else {
+            <p class="text-sm font-medium text-neutral-700">Imagen de portada</p>
+            <p class="mt-1 text-xs text-neutral-400">
+              Horizontal 16:9. JPG, PNG o WebP. Máx. 10 MB.
+            </p>
+            <label
+              class="mt-3 inline-flex min-h-11 cursor-pointer items-center rounded-full px-4 text-xs font-semibold text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-100"
+            >
+              Elegir portada
+              <input
+                type="file"
+                class="sr-only"
+                accept=".jpg,.jpeg,.png,.webp"
+                (change)="onFileSelected($event, 'banner')"
+              />
+            </label>
+            }
+          }
+        </div>
+
+        @if (uploadError()) {
+          <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ uploadError() }}
+          </p>
+        }
+      </aside>
+    </div>
+
+    @if (menuPublicUrl(); as menuUrl) {
+      <article class="mt-6 rounded-2xl bg-white p-5 ring-1 ring-neutral-100 sm:p-6">
+        <h2 class="text-base font-bold text-neutral-900">Código QR del Menú</h2>
+        <p class="mt-1 text-sm text-neutral-500">
+          Los comensales escanean este código para abrir la carta de esta sucursal.
+        </p>
+        <div class="mt-4 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
+          <canvas
+            #qrCanvas
+            class="h-60 w-60 rounded-xl bg-white ring-1 ring-neutral-100"
+            width="240"
+            height="240"
+            aria-label="Código QR de la carta"
+          ></canvas>
+          <div class="min-w-0 flex-1">
+            <p class="break-all font-mono text-xs text-neutral-600">{{ menuUrl }}</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-100"
+                (click)="copyMenuLink()"
+              >
+                {{ linkCopied() ? 'Enlace copiado' : 'Copiar enlace' }}
+              </button>
+              <a
+                [href]="menuUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-100"
+              >
+                Abrir carta
+              </a>
+              <button
+                type="button"
+                class="inline-flex min-h-11 items-center rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800"
+                (click)="downloadQrPng()"
+              >
+                Descargar QR
+              </button>
+            </div>
+          </div>
+        </div>
+      </article>
+    }
+  }
+</section>
+
+@if (pendingRemoveSlot(); as slot) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="cancelRemove()"
+    ></button>
+    <div
+      class="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <h2 class="text-base font-bold text-neutral-900">
+        {{ slot === 'logo' ? 'Quitar logo' : 'Quitar portada' }}
+      </h2>
+      <p class="mt-2 text-sm text-neutral-600">
+        @if (slot === 'logo') {
+          ¿Quitar el logo? Dejará de verse en la carta hasta que subas otro. Esta acción no se puede deshacer.
+        } @else {
+          ¿Quitar la portada? Dejará de verse en la carta hasta que subas otra. Esta acción no se puede deshacer.
+        }
+      </p>
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          [disabled]="removingSlot()"
+          (click)="cancelRemove()"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="min-h-11 rounded-full bg-rose-600 px-4 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+          [disabled]="removingSlot()"
+          (click)="confirmRemove()"
+        >
+          {{ removingSlot() ? 'Quitando…' : 'Quitar' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

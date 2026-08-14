@@ -24,7 +24,7 @@ La siguiente tabla resume las decisiones tecnológicas principales y su justific
 | Frontend (PWA Comensal + Panel Admin) | **Angular 19** | Renderizado de la app pública del menú y del panel de administración de tenants | Standalone Components, Signals, ecosistema maduro para SPA/PWA empresariales, soporte oficial de Service Workers (`@angular/service-worker`) |
 | Backend (API) | **NestJS** | Exposición de API REST/GraphQL, orquestación de lógica de negocio multi-tenant | Arquitectura modular basada en decoradores, inspirada en Angular (curva de aprendizaje compartida con el frontend), soporte nativo de Guards/Interceptors ideal para resolución de tenant |
 | Base de Datos | **PostgreSQL** (vía **Supabase**) | Persistencia relacional de todo el dominio (tenants, catálogos, promos, analítica) | Motor relacional robusto, soporte de JSONB para atributos flexibles (variantes, traducciones), Row Level Security nativo para aislamiento multi-tenant |
-| Plataforma de Datos | **Supabase** | Hosting de PostgreSQL, Storage de archivos, Auth opcional, canales Realtime | Reduce time-to-market al unificar DB + Storage + Auth + Realtime en una sola plataforma administrada, con RLS integrado a nivel de Postgres |
+| Plataforma de Datos | **Supabase** | Hosting de PostgreSQL, Storage de archivos, canales Realtime (futuro) | Reduce time-to-market al unificar DB + Storage (+ Realtime) en una sola plataforma administrada, con RLS integrado a nivel de Postgres. **No** se usa Supabase Auth en el MVP (identidad y sesión del Panel Admin viven en NestJS). |
 | ORM | **Prisma** | Capa de acceso a datos y gestión de esquema/migraciones | Type-safety end-to-end en el backend NestJS, migraciones declarativas versionadas, `Prisma Client` generado adaptado a un esquema multi-tenant con `tenant_id` |
 | Estilos / Sistema de Diseño | **TailwindCSS** | Sistema de diseño utility-first para ambas superficies (PWA pública y panel admin) | Mobile-first por diseño, consistencia visual mediante tokens de diseño (design tokens), tamaño de bundle optimizado vía purga de clases no usadas |
 | Procesamiento de Medios | **Cloudinary** | Pipeline de imágenes: compresión, transformación responsive, recorte de fondo con IA | Transformaciones on-the-fly vía URL, IA de background removal para generar assets aptos para WebAR, entrega automática de formatos modernos (WebP/AVIF) según el navegador |
@@ -46,11 +46,7 @@ La siguiente tabla resume las decisiones tecnológicas principales y su justific
 **Por qué NestJS para un backend multi-tenant:**
 
 - **Arquitectura modular**: NestJS organiza el backend en `Modules` que mapean naturalmente a los **Bounded Contexts** del dominio (Tenant, Catalog, Engagement, Media & AR, Analytics — ver `domain-modules.md`), favoreciendo bajo acoplamiento y alta cohesión.
-- **Guards e Interceptors como mecanismo de resolución de Tenant**: NestJS permite implementar un `TenantResolutionGuard` (a nivel conceptual) que se ejecuta antes de cualquier controlador, resolviendo el tenant activo a partir de:
-  - El subdominio de la request (`sucursal.miproyecto.app`), o
-  - Un dominio personalizado (custom domain) del tenant, o
-  - Un parámetro de ruta/slug (`/menu/:tenantSlug/:branchSlug`).
-  Este tenant resuelto se inyecta en el contexto de ejecución de toda la petición, evitando fugas de datos entre tenants.
+- **Guards e Interceptors como mecanismo de resolución de Tenant**: NestJS permite inyectar un `TenantContext` antes de la lógica de negocio. En rutas **públicas**, `TenantResolutionGuard` lo resuelve a partir de subdominio, dominio personalizado o slug de ruta (`/menu/:tenantSlug/:branchSlug`). En rutas **administrativas**, `JwtAuthGuard` + `TenantContextGuard` lo toman de los claims del JWT de aplicación (nunca de params/body); `PLATFORM_ADMIN` opera sin tenant o impersona con `X-Tenant-Id`. El detalle del pipeline bifurcado está en `backend-architecture.md` §3.2.
 - **Inyección de dependencias jerárquica**: permite construir servicios "tenant-aware" que reciben el contexto de tenant de forma transversal, sin necesidad de pasarlo manualmente por cada capa.
 - **Soporte de colas/tareas asíncronas**: procesos pesados como el recorte de fondo con IA (background removal) o la generación de reportes de analítica pueden desacoplarse en colas de trabajo (ej. patrón productor/consumidor) sin bloquear el hilo principal de la API.
 - **Ecosistema alineado con Angular**: comparte filosofía de decoradores, inyección de dependencias y TypeScript estricto, lo que reduce la fricción cognitiva de un equipo full-stack.
@@ -61,10 +57,16 @@ La siguiente tabla resume las decisiones tecnológicas principales y su justific
 |---|---|
 | **PostgreSQL** | Motor relacional principal. Almacena entidades transaccionales (tenants, sucursales, catálogos, promos, alérgenos, analítica agregada). Se aprovechan tipos avanzados como `JSONB` para campos semi-estructurados (ej. traducciones i18n, metadatos de variantes) y **Row Level Security (RLS)** como capa adicional de aislamiento multi-tenant a nivel de motor de base de datos. |
 | **Supabase Storage** | Almacenamiento de archivos binarios (imágenes originales antes de procesar, videos cortos de productos, assets AR ya procesados) con control de acceso por políticas, sirviendo como alternativa o complemento a Cloudinary para ciertos activos no transformables. |
-| **Supabase Auth (opcional/evaluable)** | Puede utilizarse como proveedor de identidad para el panel admin (dueños/staff), delegando el manejo de contraseñas, verificación de email y flujos de recuperación, mientras NestJS conserva la lógica de autorización (RBAC) y emite/valida los JWT de sesión de aplicación. |
+| **Supabase Auth** | **Fuera del MVP.** No se usa `auth.users` ni el JWT de GoTrue como Bearer de `/api/v1/admin/**`. La identidad (credenciales en `User.passwordHash`) y la sesión (JWT de aplicación + refresh opaco) las emite y valida **NestJS** (`AuthModule`). Ver decisión cerrada más abajo. |
 | **Supabase Realtime** | Canal opcional para features futuras que requieran actualización en vivo (ej. el panel admin ve en tiempo real que un producto se agotó, o el dashboard de analítica se actualiza sin refrescar). No es un requisito del MVP pero la plataforma lo deja disponible sin infraestructura adicional. |
 
-**Justificación de la elección Supabase sobre self-hosting puro de Postgres**: unifica base de datos, storage y (opcionalmente) autenticación/tiempo real bajo una única plataforma administrada, reduciendo la carga operativa de un equipo pequeño, sin renunciar a la portabilidad de datos (es Postgres estándar por debajo).
+**Identidad y sesión del Panel Admin (decisión cerrada):** NestJS es la única autoridad. El `accessToken` es un JWT de corta duración (~15 min) firmado por la API, con claims `sub`, `tenantId` (nulo solo para `PLATFORM_ADMIN`) y `roles[]` con alcance `TENANT` / `BRANCH` / `PLATFORM` (`api-contracts.md` §4.5). El `refreshToken` es opaco, rotativo y viaja en cookie `HttpOnly` + `Secure` + `SameSite=Strict`; no es un segundo JWT y no se persiste en `localStorage`. Hash de contraseña: Argon2id con pepper desde variables de entorno. El piloto permite cambiar la clave estando logueado (`POST /admin/auth/change-password`) y resetear la del `OWNER` desde Gestión Global. Recovery y verificación de email siguen siendo fase 2 del mismo `AuthModule`, no un IdP externo.
+
+**Por qué no Supabase Auth en el MVP:** el JWT de aplicación debe llevar `tenantId` + roles con scope; el JWT de Supabase no es ese contrato. El aislamiento de negocio corre por Prisma + `TenantContext` + RLS, no por el cliente JS de Supabase. Un SuperAdmin (`PLATFORM_ADMIN`) opera cross-tenant; pelear eso contra una sesión RLS “un tenant” añade complejidad sin beneficio. Dos directorios de usuarios (`auth.users` y `public.users`) son una fuente clásica de drift. El schema Prisma ya modela `passwordHash`.
+
+**Sealed-door (no MVP):** si más adelante se delega solo el manejo de passwords/email/recovery, Supabase puede actuar como IdP mientras NestJS **sigue emitiendo** el JWT de aplicación. Nunca un passthrough del JWT de Supabase como Bearer administrativo.
+
+**Justificación de la elección Supabase sobre self-hosting puro de Postgres**: unifica base de datos, storage y (opcionalmente) tiempo real bajo una única plataforma administrada, reduciendo la carga operativa de un equipo pequeño, sin renunciar a la portabilidad de datos (es Postgres estándar por debajo).
 
 ### 2.4 Prisma — ORM y gestión de esquema multi-tenant
 
@@ -88,6 +90,20 @@ La siguiente tabla resume las decisiones tecnológicas principales y su justific
 - **Recorte de fondo con IA (Background Removal)**: pieza clave para el módulo de **Media & AR** — permite generar automáticamente una versión del asset de producto con fondo transparente (PNG/WebP con canal alfa), requisito indispensable para que el modelo/imagen pueda "posarse" de forma creíble sobre una mesa real en el flujo de WebAR.
 - **Transformaciones on-the-fly vía URL**: permite solicitar distintas resoluciones/recortes de la misma imagen origen sin necesidad de pre-generar y almacenar múltiples copias, lo cual simplifica el pipeline de Media descrito en `domain-modules.md`.
 - **CDN integrado**: cada asset se sirve desde una red de distribución global, reduciendo la latencia percibida por el comensal sin importar su ubicación geográfica.
+
+### 2.7 Hosting de producción
+
+Detalle operativo en `docs/hosting.md`. Resumen de la decisión:
+
+| Capa | Host | Rol |
+|---|---|---|
+| Angular 19 (carta + panel) | **Vercel** | SPA estática. Output `dist/web/browser`. Rewrite SPA a `index.html`. |
+| NestJS | **Railway** (proceso largo; `Dockerfile` portable a Render/Fly) | API REST, JWT, cookies, Multer (fotos 10 MB / `.glb` 50 MB). |
+| PostgreSQL + Storage | **Supabase** | Sin cambio. `service_role` solo en Nest. |
+
+**Por qué Nest no va a Vercel Functions:** el límite de body serverless/edge es ~4.5 MB. Un rewrite de Vercel `/api` → Railway **sigue** atravesando ese límite, así que el front de producción llama a `https://api.<dominio>/api/v1` (`API_PUBLIC_URL` en el build), no a un path relativo proxied.
+
+**Dominio:** web en `proyectocarta.com`, API en `api.proyectocarta.com`. Same-site (eTLD+1) permite `SameSite=Strict` en la cookie host-only de refresh. CORS del piloto: allowlist `PUBLIC_WEB_ORIGIN` (origen de Vercel), no un proxy `/api` en Vercel. Un único origen con proxy `/api` solo sería válido detrás de un proceso largo (no Vercel).
 
 ---
 
@@ -247,9 +263,9 @@ Esta sección introduce los pilares de seguridad a nivel arquitectónico; el det
 - **Aislamiento de Tenants**: garantizado mediante la estrategia de Shared Schema + Row Level Security descrita en la sección 3.3, reforzada por el `TenantResolutionGuard` a nivel de NestJS. Ningún dato de un tenant debe ser accesible desde el contexto de otro tenant bajo ninguna circunstancia.
 - **Autenticación diferenciada por superficie**:
   - La **PWA pública del comensal** opera sin autenticación (acceso anónimo de solo lectura).
-  - El **Panel Admin** requiere autenticación mediante **JWT**, con claims que incluyen el tenant al que pertenece el usuario autenticado y su rol (RBAC).
+  - El **Panel Admin** requiere autenticación mediante **JWT de aplicación emitido por NestJS**, con claims que incluyen el tenant de la sesión (nulo para `PLATFORM_ADMIN`) y el o los roles RBAC (`OWNER` / `ADMIN` / `STAFF` / `PLATFORM_ADMIN`). No se usa Supabase Auth como sesión.
 - **Rate Limiting**: aplicado de forma diferenciada entre endpoints públicos (protección contra scraping masivo del menú) y endpoints administrativos, con límites adicionales escalados según el Plan de suscripción del tenant.
-- **CORS y Multi-Tenancy en dominios**: dado que un tenant puede eventualmente operar bajo un dominio personalizado, la configuración de CORS y las políticas de cookies/headers deben contemplar una lista dinámica de orígenes permitidos por tenant, en lugar de un único dominio fijo.
+- **CORS y Multi-Tenancy en dominios**: dado que un tenant puede eventualmente operar bajo un dominio personalizado, la configuración de CORS y las políticas de cookies/headers deben contemplar una lista dinámica de orígenes permitidos por tenant, en lugar de un único dominio fijo. El piloto usa allowlist `PUBLIC_WEB_ORIGIN`; el recorte está en `docs/produccion-deuda.md`.
 - **Protección de integridad de Analítica**: los endpoints que registran eventos de escaneo/clicks deben incorporar mecanismos anti-fraude básicos (ej. deduplicación por sesión, límites de frecuencia) para que las métricas reportadas a los tenants sean confiables.
 
 ---
@@ -263,6 +279,8 @@ Esta sección introduce los pilares de seguridad a nivel arquitectónico; el det
 | Estrategia de caché offline | Stale-While-Revalidate para datos, Cache-First para assets | Network-Only (rompe la experiencia offline) |
 | Procesamiento de imágenes | Cloudinary con IA de recorte de fondo | Procesamiento manual/interno de imágenes |
 | ORM | Prisma con middleware de tenant | Query builder manual, ORM sin soporte de migraciones declarativas |
+| Identidad del Panel Admin | JWT propio de NestJS (`User.passwordHash`, refresh opaco en cookie HttpOnly) | Supabase Auth como IdP o passthrough del JWT de GoTrue |
+| Hosting de producción | Angular en Vercel (SPA); NestJS en Railway (proceso largo); Postgres+Storage en Supabase; orígenes `app` + `api.` | Nest en Vercel Functions; proxy `/api` por Vercel (body ~4.5 MB vs uploads 10–50 MB) |
 
 ---
 

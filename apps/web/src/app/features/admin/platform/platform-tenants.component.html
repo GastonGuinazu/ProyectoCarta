@@ -1,0 +1,388 @@
+<section class="px-4 py-6 sm:px-6">
+  <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-neutral-900">Gestión Global</h1>
+      <p class="mt-1 text-sm text-neutral-500">Alta de restaurantes, suspensión y reset de clave del dueño.</p>
+    </div>
+    <button
+      type="button"
+      class="min-h-11 rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white hover:bg-neutral-800"
+      (click)="openModal()"
+    >
+      Nuevo restaurante
+    </button>
+  </div>
+
+  @if (createdNotice(); as notice) {
+    <p class="mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+      {{ notice }}
+    </p>
+  }
+
+  @if (statusError(); as error) {
+    <p class="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+      {{ error }}
+    </p>
+  }
+
+  @if (loading()) {
+    <div class="flex justify-center py-16">
+      <div class="h-10 w-10 animate-spin rounded-full border-4 border-neutral-200 border-t-neutral-500"></div>
+    </div>
+  } @else if (loadError()) {
+    <p class="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+      {{ loadError() }}
+    </p>
+  } @else if (tenants().length === 0) {
+    <p class="rounded-xl bg-white px-4 py-8 text-center text-sm text-neutral-500 ring-1 ring-neutral-100">
+      Todavía no hay restaurantes. Creá el primero con “Nuevo restaurante”.
+    </p>
+  } @else {
+    <div class="overflow-x-auto rounded-2xl bg-white ring-1 ring-neutral-100">
+      <table class="w-full text-left text-sm">
+        <thead class="border-b border-neutral-100 bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+          <tr>
+            <th class="px-4 py-3">Restaurante</th>
+            <th class="px-4 py-3">Slug</th>
+            <th class="px-4 py-3">Dueño</th>
+            <th class="px-4 py-3">Sucursales</th>
+            <th class="px-4 py-3">Estado</th>
+            <th class="px-4 py-3">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (tenant of tenants(); track tenant.id) {
+            <tr class="border-b border-neutral-100 last:border-0">
+              <td class="px-4 py-3 font-medium text-neutral-900">{{ tenant.name }}</td>
+              <td class="px-4 py-3 font-mono text-xs text-neutral-600">{{ tenant.slug }}</td>
+              <td class="px-4 py-3 text-neutral-600">{{ tenant.ownerEmail ?? '—' }}</td>
+              <td class="px-4 py-3 tabular-nums text-neutral-700">{{ tenant.branchCount }}</td>
+              <td class="px-4 py-3">
+                <span
+                  class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold"
+                  [class.bg-amber-50]="tenant.status === 'TRIAL'"
+                  [class.text-amber-800]="tenant.status === 'TRIAL'"
+                  [class.bg-emerald-50]="tenant.status === 'ACTIVE'"
+                  [class.text-emerald-800]="tenant.status === 'ACTIVE'"
+                  [class.bg-rose-50]="tenant.status === 'SUSPENDED'"
+                  [class.text-rose-800]="tenant.status === 'SUSPENDED'"
+                  [class.bg-neutral-200]="tenant.status === 'CANCELLED'"
+                  [class.text-neutral-700]="tenant.status === 'CANCELLED'"
+                >
+                  {{ statusLabel(tenant.status) }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap gap-2">
+                  @if (tenant.ownerEmail) {
+                    <button
+                      type="button"
+                      class="min-h-11 rounded-full px-3 text-xs font-semibold text-neutral-800 ring-1 ring-neutral-200 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      [disabled]="resetSaving()"
+                      (click)="askReset(tenant)"
+                    >
+                      Resetear clave
+                    </button>
+                  }
+                  @if (canSuspend(tenant.status)) {
+                    <button
+                      type="button"
+                      class="min-h-11 rounded-full px-3 text-xs font-semibold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      [disabled]="statusSaving()"
+                      (click)="askSuspend(tenant)"
+                    >
+                      Suspender
+                    </button>
+                  } @else if (canReactivate(tenant.status)) {
+                    <button
+                      type="button"
+                      class="min-h-11 rounded-full px-3 text-xs font-semibold text-neutral-800 ring-1 ring-neutral-200 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      [disabled]="statusSaving()"
+                      (click)="askReactivate(tenant)"
+                    >
+                      Reactivar
+                    </button>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
+
+@if (modalOpen()) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="closeModal()"
+    ></button>
+    <div
+      class="relative z-10 max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-tenant-title"
+    >
+      <h2 id="new-tenant-title" class="text-base font-bold text-neutral-900">Nuevo restaurante</h2>
+      <p class="mt-1 text-sm text-neutral-500">
+        Se crea el Tenant, el usuario dueño y la sucursal Casa Matriz en un solo paso.
+      </p>
+
+      <form class="mt-5 flex flex-col gap-4" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Nombre comercial</span>
+          <input
+            type="text"
+            formControlName="commercialName"
+            maxlength="120"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            (input)="onCommercialNameInput()"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Slug del restaurante</span>
+          <input
+            type="text"
+            formControlName="tenantSlug"
+            maxlength="80"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 font-mono text-sm outline-none ring-neutral-900 focus:ring-2"
+            (input)="onTenantSlugInput()"
+          />
+          <span class="text-xs text-neutral-500">Va en la URL pública: /m/este-slug/…</span>
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Nombre de la sucursal</span>
+          <input
+            type="text"
+            formControlName="branchName"
+            maxlength="120"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            (input)="onBranchNameInput()"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Slug de la sucursal</span>
+          <input
+            type="text"
+            formControlName="branchSlug"
+            maxlength="80"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 font-mono text-sm outline-none ring-neutral-900 focus:ring-2"
+            (input)="onBranchSlugInput()"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Nombre del dueño</span>
+          <input
+            type="text"
+            formControlName="ownerFullName"
+            maxlength="120"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Email del dueño</span>
+          <input
+            type="email"
+            formControlName="ownerEmail"
+            autocomplete="off"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+          />
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Contraseña inicial</span>
+          <input
+            type="password"
+            formControlName="ownerPassword"
+            autocomplete="new-password"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+          />
+          <span class="text-xs text-neutral-500">Mínimo 8 caracteres.</span>
+        </label>
+
+        @if (saveError()) {
+          <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ saveError() }}
+          </p>
+        }
+
+        <div class="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+            [disabled]="saving()"
+            (click)="closeModal()"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            class="min-h-11 rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            [disabled]="saving()"
+          >
+            {{ saving() ? 'Creando…' : 'Crear restaurante' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+@if (pendingStatus(); as pending) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="cancelStatusChange()"
+    ></button>
+    <div
+      class="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      @if (pending.nextStatus === 'SUSPENDED') {
+        <h2 class="text-base font-bold text-neutral-900">¿Suspender {{ pending.tenant.name }}?</h2>
+        <p class="mt-2 text-sm text-neutral-600">
+          La carta pública dejará de funcionar (el QR y el enlace muestran que el menú no está
+          disponible) y el dueño no podrá entrar al panel. Usalo si el cliente no paga.
+        </p>
+      } @else {
+        <h2 class="text-base font-bold text-neutral-900">¿Reactivar {{ pending.tenant.name }}?</h2>
+        <p class="mt-2 text-sm text-neutral-600">
+          La carta y el panel del dueño vuelven a funcionar. El estado de la cuenta pasa a Activo.
+        </p>
+      }
+      <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          [disabled]="statusSaving()"
+          (click)="cancelStatusChange()"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          class="min-h-11 rounded-full px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          [class.bg-rose-600]="pending.nextStatus === 'SUSPENDED'"
+          [class.hover:bg-rose-700]="pending.nextStatus === 'SUSPENDED'"
+          [class.bg-neutral-900]="pending.nextStatus !== 'SUSPENDED'"
+          [class.hover:bg-neutral-800]="pending.nextStatus !== 'SUSPENDED'"
+          [disabled]="statusSaving()"
+          (click)="confirmStatusChange()"
+        >
+          @if (statusSaving()) {
+            Guardando…
+          } @else if (pending.nextStatus === 'SUSPENDED') {
+            Suspender
+          }           @else {
+            Reactivar
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (pendingReset(); as tenant) {
+  <div class="fixed inset-0 z-40 flex items-end justify-center bg-neutral-900/40 p-4 sm:items-center">
+    <button
+      type="button"
+      class="absolute inset-0 cursor-default"
+      aria-label="Cerrar"
+      (click)="cancelReset()"
+    ></button>
+    <div
+      class="relative z-10 w-full max-w-md rounded-2xl bg-white p-5 shadow-lg ring-1 ring-neutral-100 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reset-owner-title"
+    >
+      <h2 id="reset-owner-title" class="text-base font-bold text-neutral-900">
+        Resetear clave de {{ tenant.name }}
+      </h2>
+      <p class="mt-2 text-sm text-neutral-600">
+        El dueño ({{ tenant.ownerEmail }}) entra con esta clave nueva. Las sesiones
+        abiertas se cierran. Pasale la clave por un canal que no sea este panel.
+      </p>
+
+      <form class="mt-5 flex flex-col gap-4" [formGroup]="resetForm" (ngSubmit)="confirmReset()" novalidate>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Contraseña nueva</span>
+          <input
+            type="password"
+            formControlName="newPassword"
+            autocomplete="new-password"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+          />
+          @if (
+            resetForm.controls.newPassword.touched &&
+            resetForm.controls.newPassword.hasError('required')
+          ) {
+            <span class="text-xs text-rose-600">Ingresá una contraseña.</span>
+          } @else if (
+            resetForm.controls.newPassword.touched &&
+            resetForm.controls.newPassword.hasError('minlength')
+          ) {
+            <span class="text-xs text-rose-600">Mínimo 8 caracteres.</span>
+          }
+        </label>
+
+        <label class="flex flex-col gap-1.5">
+          <span class="text-sm font-medium text-neutral-700">Repetí la contraseña</span>
+          <input
+            type="password"
+            formControlName="confirmPassword"
+            autocomplete="new-password"
+            class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+          />
+          @if (
+            resetForm.controls.confirmPassword.touched &&
+            resetForm.controls.confirmPassword.hasError('required')
+          ) {
+            <span class="text-xs text-rose-600">Repetí la contraseña.</span>
+          } @else if (
+            resetForm.controls.confirmPassword.touched &&
+            resetForm.hasError('passwordMismatch')
+          ) {
+            <span class="text-xs text-rose-600">Las contraseñas no coinciden.</span>
+          }
+        </label>
+
+        @if (resetError(); as error) {
+          <p class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">
+            {{ error }}
+          </p>
+        }
+
+        <div class="mt-1 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            class="min-h-11 rounded-full px-4 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+            [disabled]="resetSaving()"
+            (click)="cancelReset()"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            class="min-h-11 rounded-full bg-neutral-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            [disabled]="resetSaving()"
+          >
+            {{ resetSaving() ? 'Guardando…' : 'Resetear clave' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

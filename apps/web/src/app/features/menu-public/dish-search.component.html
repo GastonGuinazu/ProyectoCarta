@@ -1,0 +1,38 @@
+<div class="px-4 pb-2 pt-1">
+  <label class="sr-only" for="dish-search">Buscar platos</label>
+  <div class="relative">
+    <svg
+      class="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path stroke-linecap="round" d="m20 20-3-3" />
+    </svg>
+    <input
+      id="dish-search"
+      type="search"
+      autocomplete="off"
+      enterkeyhint="search"
+      placeholder="Buscar platos…"
+      class="min-h-11 w-full rounded-full border border-neutral-200 bg-white py-2 pl-10 pr-10 text-sm text-neutral-900 placeholder:text-neutral-400 outline-none focus:border-[var(--primary-color)] focus:ring-2 focus:ring-[var(--primary-color)]/30"
+      [value]="searchQuery()"
+      (input)="onQueryInput($event)"
+    />
+    @if (hasActiveSearch()) {
+      <button
+        type="button"
+        class="absolute right-1.5 top-1/2 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
+        (click)="clearSearch()"
+        aria-label="Limpiar búsqueda"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
+          <path stroke-linecap="round" d="M6 6l12 12M18 6 6 18" />
+        </svg>
+      </button>
+    }
+  </div>
+</div>

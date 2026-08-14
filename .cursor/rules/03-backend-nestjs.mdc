@@ -31,7 +31,7 @@ Debes respetar siempre esta separación, sin saltarte capas:
 ## Seguridad
 
 - **JWT Auth** obligatorio para todo endpoint del panel admin (rutas de gestión de tenant, sucursales, catálogo, promos, analytics agregada). Usa Guards de Nest (`@UseGuards(JwtAuthGuard, ...)`) y nunca autenticación ad-hoc dentro de un Controller.
-- Debes implementar **RBAC** (roles: owner, admin, staff, etc. según `docs/domain-modules.md`) mediante Guards/decoradores dedicados; no verifiques roles con `if` sueltos dentro de la lógica de negocio.
+- Debes implementar **RBAC** (roles: `PLATFORM_ADMIN`, `OWNER`, `ADMIN`, `STAFF` según `docs/domain-modules.md`) mediante Guards/decoradores dedicados; no verifiques roles con `if` sueltos dentro de la lógica de negocio.
 - **Validación estricta de DTOs con `class-validator`/`class-transformer`** en todo endpoint que reciba body/query/params. Prohibido aceptar un payload sin un DTO tipado y decorado (`@IsString()`, `@IsUUID()`, `@IsOptional()`, etc.). Usa `ValidationPipe` global con `whitelist: true` y `forbidNonWhitelisted: true`.
 - **Rate limiting obligatorio** en todos los endpoints públicos del menú (resolución de QR, listado de catálogo, registro de eventos de Analytics) usando el guard/interceptor de throttling definido a nivel de módulo. Los límites deben poder diferenciarse por plan del tenant, nunca hardcodeados como un único valor global sin excepción.
 - Los endpoints de Analytics que registran eventos (escaneo, click, interacción) deben incluir mitigación básica anti-fraude (rate limiting + validación de origen/sucursal) antes de persistir el evento.

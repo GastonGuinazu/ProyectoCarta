@@ -64,15 +64,28 @@ export interface ProductNode {
   readonly order: number;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  /**
+   * Minutos `[0, 1439]` en la zona IANA de la sucursal. Ambos `null` = sin
+   * recorte horario. El fin es exclusivo. `CatalogService` no evalúa "ahora":
+   * `outsideServingHours` lo puebla `PublicMenuModule`.
+   */
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
+  /** Poblado por `PublicMenuModule` vía `apply-serving-hours.util.ts`; `false` en Catalog. */
+  readonly outsideServingHours: boolean;
   /** Poblado por `PublicMenuModule` vía `apply-media-urls.util.ts`, a partir del `MediaAsset` marcado `role: PRIMARY`. */
   readonly images: {
     readonly thumbnailUrl: string | null;
     readonly detailUrl: string | null;
   };
-  /** Poblado por `PublicMenuModule` vía `apply-media-urls.util.ts`; `enabled` es `true` solo si existe una `ProcessedVariant` `AR_CUTOUT` lista. */
+  /** Poblado por `PublicMenuModule` vía `apply-media-urls.util.ts`.
+   * `images` sale del `MediaAsset` `PRIMARY` (foto 2D).
+   * `modelUrl` sale de un `MediaAsset` distinto con rol `AR_MODEL` (`.glb`/`.usdz`).
+   * `assetUrl` sigue siendo el recorte AR 2D derivado de la foto. */
   readonly webAr: {
     readonly enabled: boolean;
     readonly assetUrl: string | null;
+    readonly modelUrl: string | null;
   };
   readonly variantGroups: readonly ProductVariantGroupNode[];
   /** Poblado por `EngagementModule` vía `apply-active-promotions.util.ts`; `null` si no hay ninguna Promo/Happy Hour vigente. */

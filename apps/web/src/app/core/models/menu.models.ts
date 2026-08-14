@@ -63,6 +63,9 @@ export interface ProductSummary {
   readonly order: number;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
+  readonly outsideServingHours: boolean;
   readonly images: {
     readonly thumbnailUrl: string | null;
     readonly detailUrl: string | null;
@@ -70,6 +73,7 @@ export interface ProductSummary {
   readonly webAr: {
     readonly enabled: boolean;
     readonly assetUrl: string | null;
+    readonly modelUrl: string | null;
   };
   readonly variantGroups: readonly VariantGroup[];
   readonly activePromotion: ActivePromotion | null;

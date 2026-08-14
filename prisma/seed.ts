@@ -84,6 +84,12 @@ function placeholderVariantUrls(label: string) {
 type TransactionClient = Prisma.TransactionClient;
 
 async function main(): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'No ejecutar prisma/seed.ts en producción (crea el tenant demo Don Luigi). El catálogo de Plan/alérgenos va en la migración platform_catalog_piloto; el PLATFORM_ADMIN se crea a mano (docs/hosting.md).',
+    );
+  }
+
   await prisma.$transaction(
     async (tx) => {
       await resetPreviousSeedData(tx);
@@ -180,7 +186,7 @@ async function seedPlan(tx: TransactionClient): Promise<void> {
     update: {},
     create: {
       id: PLAN_ID,
-      name: 'Plan Demo',
+      name: 'Piloto',
       priceCents: 0,
       currency: 'ARS',
       billingPeriod: 'MONTHLY',

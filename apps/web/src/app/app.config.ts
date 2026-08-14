@@ -1,9 +1,11 @@
 import { ApplicationConfig, isDevMode, provideZoneChangeDetection } from '@angular/core';
-import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideServiceWorker } from '@angular/service-worker';
 
 import { routes } from './app.routes';
+import { provideAuthSessionRestore } from './core/auth/auth-session.initializer';
+import { authInterceptor } from './core/auth/auth.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -15,7 +17,8 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes, withComponentInputBinding()),
     // HttpClient nativo (standalone), sin HttpClientModule
     // (docs/frontend-architecture.md §4.2 — RxJS reservado a llamadas HTTP).
-    provideHttpClient(),
+    provideHttpClient(withInterceptors([authInterceptor])),
+    provideAuthSessionRestore(),
     // Base de la estrategia offline-first Stale-While-Revalidate
     // (docs/architecture.md §4.2, docs/frontend-architecture.md §3). El registro
     // se demora hasta que la app está "stable" para no competir con el primer

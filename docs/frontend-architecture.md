@@ -70,6 +70,8 @@ Es el store de mayor responsabilidad de la app pública: mantiene la **última v
 | `menuVersion` | Hash de versión del menú, usado como `ETag` lógico para decidir si hubo cambios tras revalidar. |
 | `syncStatus` | `hydratingFromCache \| synced \| revalidating \| offline \| error`. Alimenta el indicador visual de "modo offline" exigido por `features-spec.md` §4.2. |
 | `lastSyncedAt` | Timestamp de la última sincronización exitosa con el backend. |
+| `searchQuery` | Texto del buscador de platos (nombre o descripción). Vive en `MenuStore` hasta que exista `PreferencesStore`; no se persiste. |
+| `filteredHappyHourProducts` | Derivado de `filteredCategoriesTree`: platos cuya oferta ganadora es un Happy Hour vigente. La carta los muestra primero bajo el título "Happy Hour", después Combos, después el árbol de categorías. |
 
 `MenuStore` **no** expone signals separados por producto individual; los productos viven embebidos dentro de `categoriesTree`/`combos`, igual que en el contrato de API, para evitar mantener dos formas paralelas de la misma información (fuente única de verdad).
 
@@ -91,7 +93,34 @@ Mantiene preferencias del comensal, persistidas en `localStorage` (no requieren 
 
 ### 2.7 `AuthStore` (Panel Admin)
 
-Espeja el contrato de `POST /api/v1/admin/auth/login` (`api-contracts.md` §4.4): mantiene `accessToken` en memoria (nunca en `localStorage`, por seguridad), `currentUser`, `roleAssignments` y `accessibleBranches` como signals, más un signal derivado `currentRoleForActiveBranch` usado por los guards de ruta del Panel Admin.
+Espeja el contrato de `POST /api/v1/admin/auth/login` (`api-contracts.md` §4.4). Signals de solo lectura:
+
+- `accessToken` — **solo en memoria**, nunca `localStorage`.
+- `currentUser`, `roleAssignments`, `accessibleBranches`.
+- `tenant` — `null` mientras el usuario sea `PLATFORM_ADMIN` y no esté impersonando.
+- `currentRoleForActiveBranch` (computed) — rol más privilegiado que aplica a la sucursal activa; `PLATFORM_ADMIN` es siempre el rol efectivo.
+
+El `refreshToken` **no** vive en el Store: lo guarda el navegador como cookie `HttpOnly` (`api-contracts.md` §4.4). Al bootstrap de `/admin`, si no hay `accessToken` en memoria, un refresh silencioso (cookie) intenta rehidratar la sesión.
+
+Los guards de Angular son **UX**; la autorización real es NestJS.
+
+### 2.7.1 Guards e interceptor del Panel Admin
+
+- `authInterceptor`: adjunta `Authorization: Bearer <accessToken>` únicamente a `/api/v1/admin/**`. Ante `401`, un único intento de refresh (cookie) y reintento de la request; si falla, logout y navegación a `/admin/login`.
+- `authGuard` (funcional): hay sesión viva (`accessToken` en memoria o refresh silencioso al entrar). Si no → `/admin/login`.
+- `roleGuard` (funcional): compara `route.data.roles` con `currentRoleForActiveBranch`. `PLATFORM_ADMIN` pasa siempre. Sin rol suficiente → `/admin/forbidden`.
+- Selector de sucursal: `STAFF` solo ve `accessibleBranches`; `OWNER` (alcance tenant) ve todas las sucursales del tenant. `PLATFORM_ADMIN` no usa sucursal hasta impersonar. El selector del layout (`/admin/branches` + header) setea `AuthStore.activeBranchId` y el interceptor manda `X-Branch-Id`. `/admin/settings` recarga al cambiar la sucursal activa.
+
+Rutas conceptuales (todas bajo `loadChildren` de `/admin`):
+
+- `/admin/login` — sin guards.
+- `/admin` — `authGuard` + `AdminLayoutComponent`.
+- `/admin/catalog/**` — `roleGuard` con `data: { roles: ['OWNER', 'ADMIN'] }`.
+- `/admin/ops/**` (agotados) — `{ roles: ['OWNER', 'ADMIN', 'STAFF'] }`.
+- `/admin/platform/**` — `{ roles: ['PLATFORM_ADMIN'] }`. Alta de restaurantes, cambio de estado de cuenta y reset de clave del dueño (`POST` / `PATCH .../status` / `POST .../reset-owner-password` de `/api/v1/admin/platform/tenants`).
+- `/admin/account` — cualquier sesión autenticada. Cambio de contraseña (`POST /api/v1/admin/auth/change-password`).
+- `/admin/metrics` — resumen de visitas (cada apertura o recarga de la carta), tiempo en carta, búsquedas, filtros y AR (`GET /api/v1/admin/analytics/summary`). Filtra por sucursal activa.
+- `/admin/promos` — listado y alta de Promos (ventana de fechas) y Happy Hours (días + horario). El formulario de producto (`/admin/catalog/:id/edit`) carga en paralelo `GET /api/v1/admin/engagement/product-offers?productId=` para mostrar el precio que ve el comensal y permitir editar/eliminar esa oferta sin mezclar Engagement en el contrato de catálogo. El mismo formulario carga `GET /api/v1/admin/catalog/tags` para alérgenos/dietas y permite un horario de servicio opcional. La foto del combo se edita en un aside a la derecha, igual que la del producto. El layout del panel y Configuración ofrecen **Ver carta** / **Abrir carta**. La zona horaria de la sucursal se edita en `/admin/settings`. Implementación: `features/admin/promos/`.
 
 ### 2.8 Estado Derivado (Computed Signals)
 
@@ -99,9 +128,10 @@ El estado derivado se modela exclusivamente con `computed()`, nunca duplicando m
 
 | Signal derivado | Depende de | Fórmula conceptual |
 |---|---|---|
-| `filteredCategoriesTree` | `MenuStore.categoriesTree`, `PreferencesStore.activeAllergenFilters`, `PreferencesStore.activeDietaryFilters` | Recorre el árbol y devuelve una copia filtrada: oculta productos que contengan algún alérgeno excluido o que no cumplan los tags dietéticos requeridos; una categoría sin productos visibles tras el filtro también se oculta (consistente con la herencia de visibilidad de `features-spec.md` §2.5). |
+| `filteredCategoriesTree` | `MenuStore.categoriesTree`, `PreferencesStore.activeAllergenFilters`, `PreferencesStore.activeDietaryFilters`, `MenuStore.searchQuery` | Recorre el árbol y devuelve una copia filtrada: oculta productos que contengan algún alérgeno excluido, que no cumplan los tags dietéticos requeridos, o que no coincidan con el buscador (nombre/descripción); una categoría sin productos visibles tras el filtro también se oculta (consistente con la herencia de visibilidad de `features-spec.md` §2.5). |
 | `resolvedProductLabel(productId)` | `MenuStore`, `PreferencesStore.selectedLanguage` | Selecciona la traducción correspondiente al idioma activo, con fallback al idioma por defecto del Tenant/Sucursal si falta esa clave (`features-spec.md` §6.3). |
 | `hasActiveFilters` | `PreferencesStore.activeAllergenFilters`, `activeDietaryFilters` | `true` si algún set tiene al menos un elemento; controla la visibilidad del botón "Limpiar filtros". |
+| `hasActiveSearch` | `MenuStore.searchQuery` | `true` si el buscador de platos tiene texto. |
 | `isMenuStale` | `MenuStore.lastSyncedAt`, `NetworkStatusStore.isOnline` | Indica si deben mostrarse señales visuales sutiles de "estás viendo una versión offline" cuando el último sync es antiguo y no hay red. |
 
 Porque todo el filtrado ocurre sobre datos ya cacheados localmente y mediante `computed()`, la actualización de la UI ante un cambio de filtro es **síncrona e instantánea**, sin ningún round-trip de red, cumpliendo el requisito de `features-spec.md` §5.4.
@@ -125,7 +155,7 @@ Esta separación es intencional: el caché de `ngsw` no ofrece un hook nativo pa
 |---|---|---|---|
 | `app-shell` | build de Angular (JS/CSS/HTML) | `installMode: prefetch` | Debe estar disponible instantáneamente offline desde la primera visita. |
 | `menu-images` | assets de Cloudinary de productos/categorías | `performance` (cache-first, `maxAge` largo) | Coincide con `architecture.md` §4.2, fila "Imágenes de productos". |
-| `menu-api-raw` | `GET /api/v1/menu/public/**` | `freshness` (network-first con timeout corto, fallback a caché) | Capa de resiliencia adicional a nivel HTTP; el timeout evita que una red lenta bloquee la carga inicial. |
+| `menu-api-raw` | `GET …/api/v1/menu/public/**` (path relativo en local; URL absoluta `api.<dominio>` en prod, `docs/hosting.md`) | `freshness` (network-first con timeout corto, fallback a caché) | Capa de resiliencia adicional a nivel HTTP; el timeout evita que una red lenta bloquee la carga inicial. |
 | `admin-api` | `/api/v1/admin/**` | **Excluido explícitamente de cacheo persistente** | Los datos del Panel Admin son sensibles a permisos/RBAC y cambian con la sesión; no deben quedar cacheados fuera del control de la app. |
 
 ### 3.3 Flujo Lógico: Interceptación de `GET /api/v1/menu/public/:tenantSlug/:branchSlug`
@@ -241,7 +271,7 @@ graph TD
 
 - Cada carpeta dentro de `features/` es **auto-contenida** y expone sus propias rutas mediante un archivo de rutas standalone (`*.routes.ts`) cargado de forma diferida (`loadChildren`) desde `app.routes.ts`, en línea con la regla de lazy loading obligatorio (`.cursor/rules/02-frontend-angular.mdc`).
 - `web-ar/` se mantiene como feature aislada (no como parte de `menu-public/`) precisamente porque sus dependencias (motor WebXR/AR.js) son pesadas y deben quedar fuera del bundle inicial del menú, cargándose solo cuando el comensal toca "Ver en mi mesa" (`features-spec.md` §4.2).
-- Las features `admin-*` comparten un único `AdminLayoutComponent` (en `layout/`) y quedan agrupadas bajo un único punto de entrada lazy `/admin` protegido por `authGuard` + `roleGuard`, de forma que ningún byte del bundle administrativo se descarga en la experiencia pública del comensal.
+- Las features `admin-*` comparten un único `AdminLayoutComponent` (en `layout/`) y quedan agrupadas bajo un único punto de entrada lazy `/admin` protegido por `authGuard` + `roleGuard` (detalle en §2.7.1), de forma que ningún byte del bundle administrativo se descarga en la experiencia pública del comensal. `/admin/login` queda fuera de esos guards. `/admin/platform/**` exige `PLATFORM_ADMIN`.
 - `core/models/` debe mantenerse sincronizado manualmente con `api-contracts.md` ante cualquier cambio de contrato; se recomienda una revisión cruzada de ambos documentos en cada Pull Request que toque este directorio.
 
 ---

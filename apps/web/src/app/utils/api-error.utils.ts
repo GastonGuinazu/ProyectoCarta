@@ -36,3 +36,27 @@ export function extractApiErrorCode(errorBody: unknown): string | undefined {
 
   return typeof code === 'string' ? code : undefined;
 }
+
+interface FlatApiErrorMessageBody {
+  readonly message?: unknown;
+}
+
+interface WrappedApiErrorMessageBody {
+  readonly error?: FlatApiErrorMessageBody;
+}
+
+/** Extrae el mensaje de negocio del error, si existe. */
+export function extractApiErrorMessage(errorBody: unknown): string | undefined {
+  if (!errorBody || typeof errorBody !== 'object') {
+    return undefined;
+  }
+
+  const body = errorBody as FlatApiErrorMessageBody & WrappedApiErrorMessageBody;
+  const wrappedMessage = body.error?.message;
+  const flatMessage = body.message;
+  const message = wrappedMessage ?? flatMessage;
+
+  return typeof message === 'string' && message.trim().length > 0
+    ? message
+    : undefined;
+}

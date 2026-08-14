@@ -1,0 +1,147 @@
+<div class="min-h-screen bg-neutral-50">
+  @if (isSidebarOpen()) {
+    <button
+      type="button"
+      class="fixed inset-0 z-20 bg-neutral-900/40 md:hidden"
+      aria-label="Cerrar menú"
+      (click)="closeSidebar()"
+    ></button>
+  }
+
+  <aside
+    class="fixed inset-y-0 left-0 z-30 flex w-64 -translate-x-full flex-col bg-neutral-900 text-white transition-transform duration-200 ease-out data-[open=true]:translate-x-0 md:translate-x-0"
+    [attr.data-open]="isSidebarOpen()"
+    aria-label="Navegación del panel"
+  >
+    <div class="flex h-14 items-center justify-between gap-2 px-4">
+      <a
+        routerLink="/admin"
+        class="truncate text-sm font-bold"
+        (click)="closeSidebar()"
+      >
+        ProyectoCarta
+      </a>
+      <button
+        type="button"
+        class="flex min-h-11 min-w-11 items-center justify-center rounded-full hover:bg-white/10 md:hidden"
+        aria-label="Cerrar menú"
+        (click)="closeSidebar()"
+      >
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" d="M6 6l12 12M18 6L6 18" />
+        </svg>
+      </button>
+    </div>
+
+    <nav class="flex flex-1 flex-col gap-1 px-3 py-2">
+      <a
+        routerLink="/admin"
+        routerLinkActive="bg-white/10"
+        [routerLinkActiveOptions]="{ exact: true }"
+        class="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white"
+        (click)="closeSidebar()"
+      >
+        Inicio
+      </a>
+
+      @if (isPlatformAdmin()) {
+        <p class="mt-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+          Plataforma
+        </p>
+        @for (item of platformNav; track item.path) {
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="bg-white/10 text-white"
+            class="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white"
+            (click)="closeSidebar()"
+          >
+            {{ item.label }}
+          </a>
+        }
+      }
+
+      @if (canManageTenant()) {
+        <p class="mt-3 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/40">
+          Gestión
+        </p>
+        @for (item of tenantNav; track item.path) {
+          <a
+            [routerLink]="item.path"
+            routerLinkActive="bg-white/10 text-white"
+            class="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white"
+            (click)="closeSidebar()"
+          >
+            {{ item.label }}
+          </a>
+        }
+      }
+    </nav>
+
+    <div class="px-3 pb-3">
+      <a
+        routerLink="/admin/account"
+        routerLinkActive="bg-white/10 text-white"
+        class="flex min-h-11 items-center rounded-xl px-3 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white"
+        (click)="closeSidebar()"
+      >
+        Cuenta
+      </a>
+    </div>
+  </aside>
+
+  <div class="flex min-h-screen flex-col md:pl-64">
+    <header class="sticky top-0 z-10 flex h-14 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4">
+      <div class="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          class="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full text-neutral-800 hover:bg-neutral-100 md:hidden"
+          aria-label="Abrir menú"
+          [attr.aria-expanded]="isSidebarOpen()"
+          (click)="toggleSidebar()"
+        >
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16" />
+          </svg>
+        </button>
+        <h1 class="truncate text-sm font-semibold text-neutral-900">{{ contextLabel() }}</h1>
+        @if (showBranchSelector()) {
+          <label class="sr-only" for="admin-active-branch">Sucursal activa</label>
+          <select
+            id="admin-active-branch"
+            class="max-w-44 truncate rounded-full border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-800"
+            [value]="activeBranchId() ?? ''"
+            (change)="onBranchChange($event)"
+          >
+            @for (branch of accessibleBranches(); track branch.id) {
+              <option [value]="branch.id">{{ branch.name }}</option>
+            }
+          </select>
+        }
+      </div>
+
+      <div class="flex shrink-0 items-center gap-2">
+        @if (publicMenuUrl(); as url) {
+          <a
+            [href]="url"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="rounded-full px-4 py-2 text-xs font-semibold text-neutral-700 ring-1 ring-neutral-200 hover:bg-neutral-100"
+          >
+            Ver carta
+          </a>
+        }
+        <button
+          type="button"
+          class="rounded-full bg-neutral-900 px-4 py-2 text-xs font-semibold text-white hover:bg-neutral-800"
+          (click)="logout()"
+        >
+          Cerrar sesión
+        </button>
+      </div>
+    </header>
+
+    <main class="flex-1">
+      <router-outlet />
+    </main>
+  </div>
+</div>

@@ -9,4 +9,5 @@ export interface ResolvedMediaAsset {
   readonly thumbnailUrl: string | null;
   readonly detailUrl: string | null;
   readonly arCutoutUrl: string | null;
+  readonly model3dUrl: string | null;
 }

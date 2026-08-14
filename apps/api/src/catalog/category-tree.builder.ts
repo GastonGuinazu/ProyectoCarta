@@ -143,8 +143,11 @@ function toProductNode(product: ProductRow): ProductNode {
     order: product.order,
     allergenIds: product.allergenIds,
     dietaryTagIds: product.dietaryTagIds,
+    servedStartMinuteOfDay: product.servedStartMinuteOfDay,
+    servedEndMinuteOfDay: product.servedEndMinuteOfDay,
+    outsideServingHours: false,
     images: { thumbnailUrl: null, detailUrl: null },
-    webAr: { enabled: false, assetUrl: null },
+    webAr: { enabled: false, assetUrl: null, modelUrl: null },
     variantGroups: product.variantGroups.map(toVariantGroupNode),
     activePromotion: null,
   };

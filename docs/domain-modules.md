@@ -62,10 +62,12 @@ Representa la cuenta contratante de la plataforma (puede ser un restaurante úni
 
 #### Owner / User (Usuario del Panel Admin)
 
-Representa a una persona con acceso al panel administrativo de uno o más Tenants.
+Representa a una persona con acceso al panel administrativo: o bien a **un** Tenant (dueño/staff), o bien a la **plataforma** (`PLATFORM_ADMIN`, sin tenant de negocio).
 
 - **Identificador único** del usuario.
-- **Nombre completo** y **correo electrónico** (usado como credencial de acceso).
+- **Nombre completo** y **correo electrónico** (usado como credencial de acceso; único a nivel plataforma).
+- **Hash de contraseña** (Argon2id; nunca se expone). Ausente conceptualmente solo en invitaciones pendientes de aceptar.
+- **Tenant de pertenencia** (opcional): obligatorio para `OWNER` / `ADMIN` / `STAFF`; **nulo** únicamente para `PLATFORM_ADMIN`.
 - **Estado de la cuenta de usuario** (activo, invitado pendiente de aceptar, deshabilitado).
 - **Idioma preferido de la interfaz de administración**.
 - **Fecha de último acceso** (para auditoría básica).
@@ -77,7 +79,8 @@ Representa un local físico o punto de venta del Tenant.
 - **Identificador único** de la sucursal.
 - **Nombre de la sucursal** (ej. "Centro", "Norte", "Sucursal Shopping X").
 - **Slug de sucursal** (único dentro del Tenant, usado junto al slug del Tenant en la URL pública).
-- **Dirección física** y **datos de contacto** (teléfono, WhatsApp, redes sociales).
+- **Dirección física** y **datos de contacto** (teléfono, WhatsApp, Instagram / redes sociales).
+- **Imagen de portada** (banner 16:9, referencia a Media & AR), distinta del logo de marca del Tenant.
 - **Horario de atención** (por día de la semana, con posibles múltiples franjas — ej. horario de almuerzo y cena).
 - **Zona horaria** (relevante para el cálculo correcto de Happy Hours, ver dominio Engagement).
 - **Estado operativo** (abierta, cerrada temporalmente, en mantenimiento).
@@ -85,14 +88,22 @@ Representa un local físico o punto de venta del Tenant.
 
 #### Role (Rol de acceso — RBAC)
 
-Define el nivel de permisos de un Usuario dentro de un Tenant.
+Define el nivel de permisos de un Usuario. Jerarquía (un rol mínimo exigido admite los de rango superior): `PLATFORM_ADMIN > OWNER > ADMIN > STAFF`.
 
-- **Owner**: control total sobre el Tenant, incluyendo facturación, gestión de usuarios y todas las sucursales.
-- **Admin**: gestión completa del catálogo, promos, sucursales y analítica, sin acceso a facturación ni a la posibilidad de eliminar el Tenant.
-- **Staff**: acceso operativo limitado (ej. marcar productos como agotados, ver analítica básica de su sucursal asignada), sin permisos para modificar precios o estructura del catálogo.
+- **Platform Admin (`PLATFORM_ADMIN`)**: operador de la plataforma (nosotros). No pertenece a ningún Tenant. Puede listar/suspender tenants, gestionar planes, e **impersonar** un tenant de soporte (`X-Tenant-Id` explícito, solo si el caller es `PLATFORM_ADMIN`). No se modela como un Owner mágico ni con un “tenant plataforma” sintético.
+- **Owner (`OWNER`)**: control total sobre **todo** el Tenant (alcance `TENANT`, `branchId` nulo), incluyendo facturación, gestión de usuarios y **todas** las sucursales. No se acota a una sola sucursal: ese recorte es `STAFF` (y `ADMIN` cuando se asigne con alcance `BRANCH`).
+- **Admin (`ADMIN`)**: gestión completa del catálogo, promos, sucursales y analítica, sin acceso a facturación ni a la posibilidad de eliminar el Tenant. Puede ser de alcance `TENANT` o `BRANCH`.
+- **Staff (`STAFF`)**: acceso operativo limitado (ej. marcar productos como agotados, ver analítica básica de su sucursal asignada), sin permisos para modificar precios o estructura del catálogo. Alcance `BRANCH`.
 - **(Extensible)**: el modelo de roles debe permitir agregar roles adicionales a futuro (ej. "Editor de contenido") sin romper la estructura existente.
 
-Un mismo Usuario puede tener un Rol distinto en cada Sucursal a la que tiene acceso (ej. Admin en la sucursal Centro, Staff en la sucursal Norte).
+Un mismo Usuario de tenant puede tener un Rol distinto en cada Sucursal a la que tiene acceso (ej. Admin en la sucursal Centro, Staff en la sucursal Norte), o un rol global a nivel Tenant (Owner). El JWT lleva todas las asignaciones; el guard evalúa la más privilegiada que aplique al `branchId` activo.
+
+Matriz mínima del MVP:
+
+- Crear/editar productos, combos, promos: `OWNER` o `ADMIN` (y `PLATFORM_ADMIN` impersonando).
+- Marcar agotado: también `STAFF` en su sucursal.
+- Invitar usuarios / facturación / eliminar tenant: `OWNER` (y plataforma).
+- Consola de tenants / planes: solo `PLATFORM_ADMIN`.
 
 #### Plan (Plan de Suscripción)
 
@@ -120,17 +131,20 @@ erDiagram
 
 - Un **Tenant** posee **una o muchas Sucursales** (mínimo una sucursal para operar).
 - Un **Tenant** está suscrito a **exactamente un Plan** vigente en cada momento.
-- Un **Tenant** tiene **uno o muchos Usuarios** con acceso administrativo.
-- Un **Usuario** puede tener **una asignación de Rol por Sucursal** (o un rol global a nivel Tenant, como el Owner).
+- Un **Tenant** tiene **uno o muchos Usuarios** con acceso administrativo (`OWNER` / `ADMIN` / `STAFF`). Los `PLATFORM_ADMIN` **no** cuelgan de un Tenant.
+- Un **Usuario** de tenant puede tener **una asignación de Rol por Sucursal** (o un rol global a nivel Tenant, como el Owner). Un `PLATFORM_ADMIN` tiene una única asignación de alcance `PLATFORM`, sin `tenantId` ni `branchId`.
 
 ### 2.4 Reglas e Invariantes de Negocio
 
-1. **Un Tenant no puede operar sin al menos una Sucursal activa**; la creación del Tenant durante el onboarding debe forzar la creación de una Sucursal inicial.
+1. **Un Tenant no puede operar sin al menos una Sucursal activa**; la creación del Tenant durante el onboarding (consola `PLATFORM_ADMIN`: `POST /api/v1/admin/platform/tenants`) crea en **una sola transacción Prisma** el Tenant, el User `OWNER` (alcance `TENANT`, `branchId` nulo — administra todas las sucursales) y la Branch inicial (Casa Matriz). El hash de contraseña se calcula fuera de la transacción. Guía operativa (estados `TRIAL`/`ACTIVE`, slugs, un dueño vs. varios locales vs. varias marcas): `guia-tenants-duenos-y-slugs.md`.
 2. **El límite de Sucursales del Plan es una cota dura**: el sistema debe impedir la creación de una nueva Sucursal si el Tenant ya alcanzó el límite de su Plan actual, sugiriendo un upgrade de plan.
 3. **Debe existir siempre al menos un Usuario con Rol Owner por Tenant**; no se permite eliminar o degradar al último Owner sin transferir previamente ese rol a otro usuario.
 4. **Un cambio de Plan (upgrade/downgrade)** debe revalidar los límites vigentes: si un Tenant hace downgrade a un plan con menos sucursales permitidas que las que actualmente posee, el sistema debe bloquear el downgrade o solicitar la desactivación manual de sucursales excedentes antes de aplicar el cambio.
 5. **El slug del Tenant es único a nivel global de la plataforma**; el slug de la Sucursal es único únicamente dentro del alcance de su Tenant (dos tenants distintos pueden tener una sucursal llamada "centro").
 6. **La suspensión de un Tenant** (ej. por falta de pago) debe desactivar el acceso público a todos sus menús de forma inmediata, mostrando una página de "menú no disponible" en lugar de un error técnico.
+7. **`PLATFORM_ADMIN` ⇒ `tenantId` nulo** y ninguna `RoleAssignment` de tenant. **`OWNER` / `ADMIN` / `STAFF` ⇒ `tenantId` obligatorio**. No existe un tenant sintético de plataforma.
+8. **El `tenantId` operable de un usuario de tenant sale solo de los claims del JWT**, nunca del body, params o del header `X-Tenant-Id`. Ese header solo se honra si el caller es `PLATFORM_ADMIN` (impersonación de soporte).
+9. **Jerarquía de roles**: `PLATFORM_ADMIN > OWNER > ADMIN > STAFF`. Un endpoint que exige `ADMIN` admite `OWNER` y `PLATFORM_ADMIN`.
 
 ### 2.5 Dependencias con otros Dominios
 
@@ -174,6 +188,7 @@ Un ítem individual del menú.
 - **Categoría** a la que pertenece (referencia a una Category, típicamente una categoría "hoja" del árbol, aunque el modelo no debe impedir productos en categorías intermedias).
 - **Imágenes/video** asociados (referencia a Media & AR, incluyendo el asset preparado para WebAR).
 - **Estado de disponibilidad** (disponible, agotado temporalmente, descontinuado).
+- **Horario de servicio opcional** (minuto de inicio y de fin del día, en la zona IANA de la sucursal; si no hay horario, se sirve todo el día).
 - **Tags de alérgenos y preferencias dietéticas** (ver `features-spec.md`).
 - **Orden de visualización** dentro de su categoría.
 - **Sucursales en las que está disponible** (para cadenas donde no todos los locales ofrecen el mismo producto).
@@ -316,8 +331,9 @@ Representa cualquier archivo multimedia subido al sistema.
 
 - **Identificador único** del asset.
 - **Tenant propietario** del asset (para control de cuota de almacenamiento según Plan).
-- **Tipo de archivo** (imagen estática, video corto).
+- **Tipo de archivo** (imagen estática, video corto, modelo 3D `.glb`/`.usdz`).
 - **Entidad relacionada** (a qué Product, Category, Combo o al propio Tenant/Branch pertenece — ej. logo).
+- **Rol en el producto** (vía `ProductMedia`): `PRIMARY` = foto 2D de presentación (obligatoria para que el listado muestre thumbnail); `GALLERY` = fotos extra; `AR_MODEL` = modelo 3D opcional (`.glb`/`.usdz`) para el visor AR. Un producto puede tener `PRIMARY` y `AR_MODEL` a la vez; no se mezclan en el mismo registro.
 - **URL(s) del archivo original** (previo a procesamiento).
 - **Estado del pipeline de procesamiento** (pendiente, procesando, listo, error).
 - **Peso del archivo** (para el cálculo de cuota de almacenamiento del Plan).
@@ -361,6 +377,7 @@ graph LR
 2. **La cuota de almacenamiento se controla a nivel Tenant, sumando el peso de todos sus `MediaAsset`** (originales), no de las variantes derivadas (que son responsabilidad de generación de la plataforma, no de espacio "propio" del tenant).
 3. **La eliminación de un Product o Category debe disparar la eliminación (o archivado) de sus `MediaAsset` asociados exclusivos**, para no acumular archivos huérfanos que consuman cuota indefinidamente.
 4. **Los formatos de entrada aceptados y los límites de tamaño de archivo son configurables a nivel plataforma**, no hardcodeados por Tenant, para mantener consistencia de calidad en todo el catálogo global.
+5. **La foto de presentación y el modelo 3D son independientes.** `PRIMARY` solo acepta imagen (`.jpg`/`.png`/`.webp`). `AR_MODEL` solo acepta `.glb`/`.usdz`. Subir o quitar uno no pisa al otro. El menú público toma `images.thumbnailUrl`/`detailUrl` de `PRIMARY` y `webAr.modelUrl` de `AR_MODEL`. Si se quita la foto, el listado usa el placeholder; si se quita el modelo, no se ofrece el visor AR.
 
 ### 5.5 Dependencias con otros Dominios
 
@@ -395,17 +412,17 @@ Registra una acción concreta del comensal dentro del menú tras el escaneo inic
 
 - **Identificador único** del evento.
 - **Sesión anónima** a la que pertenece (relaciona con el `ScanEvent` que originó la visita).
-- **Tipo de interacción**: vista de categoría, vista de detalle de producto, click en "Ver en AR", aplicación de un filtro de alérgeno/dieta, cambio de idioma, click en un ítem en Promo/Happy Hour.
-- **Entidad referenciada** (el Product, Category o Promo sobre la que ocurrió la interacción).
+- **Tipo de interacción** alineado a la carta actual (listado, sin ficha de producto): apertura de visita (`ScanEvent`), tiempo en carta (`SESSION_DWELL`), búsqueda (`SEARCH_APPLIED`), filtro de alérgeno/dieta, click en “Ver en tu mesa” (`AR_VIEW_CLICK`). Quedan reservados para más adelante: vista de categoría, ficha de producto, idioma, promo.
+- **Entidad referenciada** (el Product o el tag de filtro). La búsqueda lleva el texto en `payload.q` (máx. 80 caracteres, sin PII de persona).
 - **Timestamp** de la interacción.
-- **Duración de la vista** (para eventos de tipo "vista de detalle de producto", cuánto tiempo permaneció el comensal en esa pantalla — usado como proxy de interés).
+- **Duración** (`viewDurationMs`) para `SESSION_DWELL`: tiempo acumulado con la pestaña visible. “Se quedaron” = duración ≥ 30 s.
 
 #### AggregatedMetric (Métrica Agregada)
 
 Representa datos pre-calculados/agregados a partir de los eventos crudos, optimizados para consulta rápida desde el dashboard del Panel Admin (evitando recalcular sobre el volumen completo de eventos crudos en cada consulta).
 
 - **Dimensión de agregación**: por Sucursal, por Producto, por Categoría, por Promo, por rango de fechas.
-- **Métricas calculadas**: total de escaneos, total de vistas de producto, tasa de interacción (interacciones / escaneos), producto(s) más visto(s), efectividad de Promo (interacciones durante la ventana de vigencia de la promo vs. fuera de ella).
+- **Métricas calculadas (corte actual del panel)**: total de visitas (`ScanEvent`), porcentaje que se quedó ≥ 30 s, tiempo medio en carta, búsquedas más frecuentes, filtros de alérgeno/dieta, aperturas de AR por producto. El dashboard lee eventos crudos (sin `AggregatedMetric` todavía).
 - **Período de agregación** (diario, semanal, mensual).
 
 ### 6.3 Relaciones entre Entidades
@@ -426,7 +443,7 @@ erDiagram
 
 1. **Los eventos de Analytics no deben contener información personal identificable (PII) del comensal**: se trabaja exclusivamente con identificadores de sesión anónimos y metadata técnica agregada, en línea con el principio de privacidad por diseño.
 2. **Todo evento debe pertenecer inequívocamente a un Tenant y una Sucursal**, para permitir el filtrado y aislamiento multi-tenant también en este dominio (ningún tenant debe poder ver analítica de otro).
-3. **La agregación de métricas debe ser resiliente a eventos duplicados** (ej. un comensal que refresca la página varias veces no debe inflar artificialmente el conteo de "escaneos únicos" — se recomienda deduplicar por sesión anónima dentro de una ventana de tiempo razonable).
+3. **La agregación de métricas debe ser resiliente a eventos duplicados del mismo `sessionId`** (doble POST, remount de la SPA). Un F5 o pestaña nueva genera otro `sessionId` y cuenta como otra **visita** (apertura de carta), no como persona única. “Se quedaron” = dwell visible ≥ 30 s de esa visita.
 4. **La disponibilidad de analítica avanzada (ej. series históricas de largo plazo, exportación de reportes) puede estar limitada por el Plan de suscripción del Tenant** (ver dominio Tenant), quedando ciertas vistas agregadas reservadas a planes superiores.
 5. **Los eventos deben poder generarse incluso en modo offline** (ver `architecture.md`, PWA Offline) y sincronizarse de forma diferida cuando el dispositivo recupera conectividad, sin perder la marca de tiempo original del evento.
 

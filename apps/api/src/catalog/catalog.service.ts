@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TenantContextService } from '../core';
+import { TenantContextService, type LocalizedText } from '../core';
 import { buildCategoryTree } from './category-tree.builder';
 import { CategoryRepository } from './category/category.repository';
 import { ComboRepository } from './combo/combo.repository';
@@ -26,6 +26,7 @@ export interface CategoryTreeResult {
   readonly categories: readonly CategoryTreeNode[];
   readonly categoryImageAssetIds: ReadonlyMap<string, string>;
   readonly productPrimaryAssetIds: ReadonlyMap<string, string>;
+  readonly productArModelAssetIds: ReadonlyMap<string, string>;
 }
 
 export interface ComboListResult {
@@ -76,6 +77,10 @@ export class CatalogService {
       productPrimaryAssetIds: collectAssetIdsById(
         products,
         (product) => product.primaryMediaAssetId,
+      ),
+      productArModelAssetIds: collectAssetIdsById(
+        products,
+        (product) => product.arModelMediaAssetId,
       ),
     };
   }
@@ -131,6 +136,66 @@ export class CatalogService {
         iconUrl: dietaryTag.iconUrl,
       })),
     };
+  }
+
+  async productExists(productId: string): Promise<boolean> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    const ids = await this.productRepository.findExistingIds(tenantId, [
+      productId,
+    ]);
+    return ids.length === 1;
+  }
+
+  async findExistingProductIds(
+    ids: readonly string[],
+  ): Promise<readonly string[]> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    return this.productRepository.findExistingIds(tenantId, ids);
+  }
+
+  async findExistingCategoryIds(
+    ids: readonly string[],
+  ): Promise<readonly string[]> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    return this.categoryRepository.findExistingIds(tenantId, ids);
+  }
+
+  async findExistingComboIds(
+    ids: readonly string[],
+  ): Promise<readonly string[]> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    return this.comboRepository.findExistingIds(tenantId, ids);
+  }
+
+  async findProductOfferContext(
+    productId: string,
+  ): Promise<{
+    readonly id: string;
+    readonly categoryId: string;
+    readonly basePriceCents: number;
+    readonly currency: string;
+  } | null> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    const product = await this.productRepository.findAdminById(
+      tenantId,
+      productId,
+    );
+    if (!product) {
+      return null;
+    }
+    return {
+      id: product.id,
+      categoryId: product.categoryId,
+      basePriceCents: product.basePriceCents,
+      currency: product.currency,
+    };
+  }
+
+  async findProductNames(
+    ids: readonly string[],
+  ): Promise<readonly { readonly id: string; readonly name: LocalizedText }[]> {
+    const tenantId = this.tenantContextService.getTenantIdOrThrow();
+    return this.productRepository.findNamesByIds(tenantId, ids);
   }
 }
 

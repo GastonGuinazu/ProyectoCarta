@@ -4,6 +4,8 @@ import type { CategoryNode } from '../../core/models/menu.models';
 import { MenuStore } from '../../core/stores/menu.store';
 import { pickLocalizedText } from '../../utils/localized-text.utils';
 import { ProductCardComponent } from './product-card.component';
+import { menuCategorySectionId } from './menu-section-ids';
+import { MenuAnalyticsService } from '../../core/api/menu-analytics.service';
 
 /**
  * Se auto-referencia para renderizar el árbol anidado de categorías
@@ -32,6 +34,7 @@ import { ProductCardComponent } from './product-card.component';
 })
 export class CategoryListComponent {
   private readonly menuStore = inject(MenuStore);
+  private readonly analytics = inject(MenuAnalyticsService);
 
   readonly categories = input<readonly CategoryNode[] | null>(null);
 
@@ -44,7 +47,9 @@ export class CategoryListComponent {
 
   protected readonly syncStatus = this.menuStore.syncStatus;
   protected readonly hasMenuData = this.menuStore.hasMenuData;
-  protected readonly hasActiveAllergenFilter = this.menuStore.hasActiveAllergenFilter;
+  protected readonly hasActiveFilters = this.menuStore.hasActiveFilters;
+  protected readonly hasActiveSearch = this.menuStore.hasActiveSearch;
+  protected readonly filteredComboCount = computed(() => this.menuStore.filteredCombos().length);
 
   /** Placeholders para el skeleton de carga inicial (sin fabricar datos: solo controla cuántos bloques dibujar). */
   protected readonly skeletonPlaceholders = [0, 1, 2, 3, 4, 5];
@@ -55,5 +60,13 @@ export class CategoryListComponent {
 
   protected categoryDescription(category: CategoryNode): string | null {
     return category.description ? pickLocalizedText(category.description) : null;
+  }
+
+  protected sectionId(categoryId: string): string {
+    return menuCategorySectionId(categoryId);
+  }
+
+  protected onArOpened(productId: string): void {
+    this.analytics.recordArView(productId);
   }
 }

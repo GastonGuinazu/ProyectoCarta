@@ -1,4 +1,4 @@
-import type { MediaVariantPurpose } from '@prisma/client';
+import type { MediaFileType, MediaVariantPurpose } from '@prisma/client';
 
 /**
  * `ProcessedVariant` cruda de un `MediaAsset` (`domain-modules.md` §5.2:
@@ -15,5 +15,7 @@ export interface ProcessedVariantRow {
 
 export interface MediaAssetRow {
   readonly id: string;
+  readonly fileType: MediaFileType;
+  readonly originalUrl: string;
   readonly variants: readonly ProcessedVariantRow[];
 }

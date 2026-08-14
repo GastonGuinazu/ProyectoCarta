@@ -1,0 +1,16 @@
+---
+description: Registrar atajos del piloto en docs/produccion-deuda.md en lugar de dejarlos solo en comentarios.
+alwaysApply: true
+---
+
+# Deuda del piloto
+
+Si implementás un **recorte** respecto de `docs/architecture.md`, `docs/features-spec.md` o `docs/hosting.md` (CORS estático, cookie que solo vale en eTLD+1, health sin DB, seed local, impersonación hardcodeada, contrato a medias, etc.):
+
+1. Agregá una fila en `docs/produccion-deuda.md`: qué hay hoy, qué hay que cambiar, archivos.
+2. No lo dejes solo en un comentario `TODO` / `queda para después`.
+3. Si el cambio se hace, **borrá** esa fila. No marques “hecho” en silencio.
+
+No copies acá la fase 6 de `docs/produccion-checklist.md` (eso es trabajo planificado). Esta lista es solo atajos **ya tomados**.
+
+Vetos cerrados (no son deuda; no los “fixes”): Nest no va a Vercel Functions; Vercel no proxea `/api`; secretos y `service_role` solo en Railway.

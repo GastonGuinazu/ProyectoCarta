@@ -1,0 +1,8 @@
+apps/api/**
+!apps/api/package.json
+Dockerfile
+railway.toml
+.cursor
+**/.angular
+**/coverage
+**/dist

@@ -1,0 +1,52 @@
+@if (isVisible()) {
+  <nav
+    class="flex flex-nowrap gap-2 overflow-x-auto px-4 py-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+    aria-label="Categorías del menú"
+  >
+    @if (hasHappyHour()) {
+      <button
+        type="button"
+        class="inline-flex min-h-11 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold ring-1 transition-colors"
+        [class.bg-neutral-100]="!isActive(happyHourSectionId)"
+        [class.text-neutral-700]="!isActive(happyHourSectionId)"
+        [class.ring-neutral-200]="!isActive(happyHourSectionId)"
+        [class.ring-transparent]="isActive(happyHourSectionId)"
+        [style.backgroundColor]="isActive(happyHourSectionId) ? 'var(--primary-color)' : null"
+        [style.color]="isActive(happyHourSectionId) ? 'var(--primary-contrast)' : null"
+        (click)="scrollToSection(happyHourSectionId)"
+      >
+        Happy Hour
+      </button>
+    }
+    @if (hasCombos()) {
+      <button
+        type="button"
+        class="inline-flex min-h-11 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold ring-1 transition-colors"
+        [class.bg-neutral-100]="!isActive(combosSectionId)"
+        [class.text-neutral-700]="!isActive(combosSectionId)"
+        [class.ring-neutral-200]="!isActive(combosSectionId)"
+        [class.ring-transparent]="isActive(combosSectionId)"
+        [style.backgroundColor]="isActive(combosSectionId) ? 'var(--primary-color)' : null"
+        [style.color]="isActive(combosSectionId) ? 'var(--primary-contrast)' : null"
+        (click)="scrollToSection(combosSectionId)"
+      >
+        Combos
+      </button>
+    }
+    @for (category of categories(); track category.id) {
+      <button
+        type="button"
+        class="inline-flex min-h-11 shrink-0 items-center rounded-full px-3.5 text-xs font-semibold ring-1 transition-colors"
+        [class.bg-neutral-100]="!isActive(sectionId(category.id))"
+        [class.text-neutral-700]="!isActive(sectionId(category.id))"
+        [class.ring-neutral-200]="!isActive(sectionId(category.id))"
+        [class.ring-transparent]="isActive(sectionId(category.id))"
+        [style.backgroundColor]="isActive(sectionId(category.id)) ? 'var(--primary-color)' : null"
+        [style.color]="isActive(sectionId(category.id)) ? 'var(--primary-contrast)' : null"
+        (click)="scrollToSection(sectionId(category.id))"
+      >
+        <span class="whitespace-nowrap">{{ categoryName(category) }}</span>
+      </button>
+    }
+  </nav>
+}

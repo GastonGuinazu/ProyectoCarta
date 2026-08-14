@@ -13,4 +13,8 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./features/menu-public/menu-public.routes').then((m) => m.MENU_PUBLIC_ROUTES),
   },
+  {
+    path: 'admin',
+    loadChildren: () => import('./features/admin/admin.routes').then((m) => m.ADMIN_ROUTES),
+  },
 ];

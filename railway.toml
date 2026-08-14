@@ -1,0 +1,12 @@
+# API NestJS — proceso largo. No usar el builder Nixpacks: el Dockerfile
+# de la raíz incluye Prisma + argon2 (docs/hosting.md).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

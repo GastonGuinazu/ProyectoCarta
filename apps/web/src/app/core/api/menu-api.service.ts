@@ -20,10 +20,8 @@ export class MenuApiService {
   /**
    * `GET /api/v1/menu/public/:tenantSlug/:branchSlug`.
    *
-   * El tipo de retorno (`PublicMenuApiResponse`) refleja la forma "wire" real
-   * que devuelve hoy el backend (`branch`, `categories`, `combos`, `catalogs`)
-   * — ver `public-menu-response.model.ts`. Sigue sin incluir `meta` ni
-   * `tenant.branding`, pendientes de `MediaModule`.
+   * El tipo de retorno refleja `branch`, `tenant.branding`, `categories`,
+   * `combos` y `catalogs`. `meta` sigue pendiente.
    */
   fetchPublicMenu(tenantSlug: string, branchSlug: string): Observable<PublicMenuApiResponse> {
     const url = `${environment.apiBaseUrl}/menu/public/${encodeURIComponent(tenantSlug)}/${encodeURIComponent(branchSlug)}`;

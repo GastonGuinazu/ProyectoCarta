@@ -16,11 +16,11 @@
   }
 
   @if (effectiveCategories().length === 0) {
-    @if (isRoot()) {
+    @if (isRoot() && filteredComboCount() === 0) {
       <div class="flex flex-col items-center gap-2 px-6 py-16 text-center text-neutral-500">
-        @if (hasActiveAllergenFilter()) {
+        @if (hasActiveFilters() || hasActiveSearch()) {
           <p class="text-sm font-medium text-neutral-700">No encontramos productos con estos filtros.</p>
-          <p class="text-xs">Probá quitar algún alérgeno excluido para ver más opciones.</p>
+          <p class="text-xs">Probá quitar algún filtro o cambiar la búsqueda para ver más opciones.</p>
         } @else {
           <p class="text-sm font-medium text-neutral-700">Este local todavía no publicó su menú.</p>
           <p class="text-xs">Volvé a intentarlo en unos minutos.</p>
@@ -30,7 +30,7 @@
   } @else {
     <div class="flex flex-col gap-8" [class.px-4]="isRoot()" [class.py-4]="isRoot()">
       @for (category of effectiveCategories(); track category.id) {
-        <section class="flex flex-col gap-3">
+        <section class="flex flex-col gap-3" [attr.id]="isRoot() ? sectionId(category.id) : null" [class.scroll-mt-36]="isRoot()">
           <header>
             <h2 class="text-lg font-bold text-neutral-900">{{ categoryName(category) }}</h2>
             @if (categoryDescription(category)) {
@@ -41,7 +41,7 @@
           @if (category.products.length > 0) {
             <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               @for (product of category.products; track product.id) {
-                <app-product-card [product]="product" />
+                <app-product-card [product]="product" (arOpened)="onArOpened(product.id)" />
               }
             </div>
           }

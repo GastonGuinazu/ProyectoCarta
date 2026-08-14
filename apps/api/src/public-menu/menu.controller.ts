@@ -1,5 +1,5 @@
 import { Controller, Get, NotFoundException } from '@nestjs/common';
-import { CurrentTenant, type TenantContext } from '../core';
+import { CurrentTenant, Public, type TenantContext } from '../core';
 import { MenuService, type PublicMenuResponse } from './menu.service';
 
 /**
@@ -15,6 +15,7 @@ import { MenuService, type PublicMenuResponse } from './menu.service';
  * se lee acá vía `@CurrentTenant()`, que expone el mismo `TenantContext` que ya
  * quedó disponible en `AsyncLocalStorage` para el resto del pipeline.
  */
+@Public()
 @Controller('menu/public/:tenantSlug/:branchSlug')
 export class MenuController {
   constructor(private readonly menuService: MenuService) {}
@@ -28,6 +29,9 @@ export class MenuController {
       throw new NotFoundException();
     }
 
-    return this.menuService.getPublicMenu(tenantContext.branchId);
+    return this.menuService.getPublicMenu(
+      tenantContext.tenantId,
+      tenantContext.branchId,
+    );
   }
 }
