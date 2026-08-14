@@ -20,6 +20,12 @@ import {
   extractApiErrorMessage,
 } from '../../../utils/api-error.utils';
 import { drawMenuQr, menuQrPngDataUrl } from '../../../utils/menu-qr';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  IMAGE_UPLOAD_HINT,
+  IMAGE_UPLOAD_TYPE_ERROR,
+  isAcceptedImageFile,
+} from '../../../utils/image-upload.utils';
 import { BRANCH_TIMEZONE_OPTIONS } from './branch-timezones';
 import { AdminSettingsApiService } from './admin-settings-api.service';
 import type {
@@ -28,7 +34,6 @@ import type {
 } from './admin-settings.models';
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const FALLBACK_ACCENT = '#171717';
 
 @Component({
@@ -46,6 +51,8 @@ export class SettingsComponent implements OnInit {
   private readonly qrCanvas = viewChild<ElementRef<HTMLCanvasElement>>('qrCanvas');
 
   protected readonly loading = signal(true);
+  protected readonly imageUploadAccept = IMAGE_UPLOAD_ACCEPT;
+  protected readonly imageUploadHint = IMAGE_UPLOAD_HINT;
   protected readonly saving = signal(false);
   protected readonly uploadingSlot = signal<AdminBrandingSlot | null>(null);
   protected readonly removingSlot = signal<AdminBrandingSlot | null>(null);
@@ -321,8 +328,8 @@ export class SettingsComponent implements OnInit {
     if (this.uploadingSlot() || this.removingSlot()) {
       return;
     }
-    if (!this.fileIsImage(file)) {
-      this.uploadError.set('El logo y la portada solo aceptan .jpg, .png o .webp.');
+    if (!isAcceptedImageFile(file)) {
+      this.uploadError.set(IMAGE_UPLOAD_TYPE_ERROR);
       return;
     }
 
@@ -364,13 +371,6 @@ export class SettingsComponent implements OnInit {
     }
   }
 
-  private fileIsImage(file: File): boolean {
-    const name = file.name.toLowerCase();
-    const lastDot = name.lastIndexOf('.');
-    const extension = lastDot >= 0 ? name.slice(lastDot) : '';
-    return IMAGE_EXTENSIONS.has(extension);
-  }
-
   private messageForLoadError(error: unknown): string {
     if (error instanceof HttpErrorResponse) {
       if (extractApiErrorCode(error.error) === 'BRANCH_NOT_FOUND') {
@@ -402,7 +402,7 @@ export class SettingsComponent implements OnInit {
       switch (code) {
         case 'UNSUPPORTED_MEDIA_TYPE':
         case 'MEDIA_SLOT_TYPE_MISMATCH':
-          return 'El logo y la portada solo aceptan .jpg, .png o .webp.';
+          return IMAGE_UPLOAD_TYPE_ERROR;
         case 'MEDIA_FILE_TOO_LARGE':
           return 'El archivo supera el tamaño máximo de 10 MB.';
         case 'STORAGE_QUOTA_EXCEEDED':

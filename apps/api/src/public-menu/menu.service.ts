@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { TenantOrBranchNotFoundException } from '../core';
 import { CatalogService } from '../catalog/catalog.service';
 import type {
@@ -30,6 +30,8 @@ export interface PublicMenuResponse {
 
 @Injectable()
 export class MenuService {
+  private readonly logger = new Logger(MenuService.name);
+
   constructor(
     private readonly branchService: BranchService,
     private readonly tenantService: TenantService,
@@ -39,6 +41,23 @@ export class MenuService {
   ) {}
 
   async getPublicMenu(
+    tenantId: string,
+    branchId: string,
+  ): Promise<PublicMenuResponse> {
+    try {
+      return await this.buildPublicMenu(tenantId, branchId);
+    } catch (error) {
+      if (!(error instanceof TenantOrBranchNotFoundException)) {
+        this.logger.error(
+          `getPublicMenu failed tenantId=${tenantId} branchId=${branchId}`,
+          error instanceof Error ? error.stack : String(error),
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async buildPublicMenu(
     tenantId: string,
     branchId: string,
   ): Promise<PublicMenuResponse> {

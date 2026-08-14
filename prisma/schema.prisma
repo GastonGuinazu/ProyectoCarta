@@ -329,8 +329,13 @@ model Product {
   /// Minuto del día `[0, 1439]` en la zona IANA de la sucursal. `null` = sin
   /// recorte horario (siempre se sirve). Debe ir en par con
   /// `servedEndMinuteOfDay`. El fin es exclusivo, igual que Happy Hour.
+  /// Es la primera franja; el resto vive en `servedWindows`.
   servedStartMinuteOfDay Int?               @map("served_start_minute_of_day")
   servedEndMinuteOfDay   Int?               @map("served_end_minute_of_day")
+  /// Franjas diarias `[{ startMinuteOfDay, endMinuteOfDay }, ...]`. Vacío/nulo
+  /// = todo el día. El par de columnas de arriba replica la primera franja
+  /// (compatibilidad y check SQL).
+  servedWindows          Json?              @map("served_windows") @db.JsonB
   createdAt              DateTime           @default(now()) @map("created_at")
   updatedAt              DateTime           @updatedAt @map("updated_at")
 

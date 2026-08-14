@@ -308,8 +308,13 @@ export class PlatformTenantsComponent implements OnInit {
   }
 
   private messageForLoadError(error: unknown): string {
-    if (error instanceof HttpErrorResponse && error.status === 0) {
-      return 'No pudimos conectar con el servidor. Intentá de nuevo.';
+    if (error instanceof HttpErrorResponse) {
+      if (error.status === 0) {
+        return 'No pudimos conectar con el servidor. Revisá que la API esté en marcha.';
+      }
+      if (extractApiErrorCode(error.error) === 'TENANT_OR_BRANCH_NOT_FOUND') {
+        return 'El tenant de impersonación ya no existe. Recargá e intentá de nuevo.';
+      }
     }
     return 'No pudimos cargar los restaurantes. Intentá de nuevo.';
   }

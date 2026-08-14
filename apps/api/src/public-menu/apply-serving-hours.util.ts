@@ -3,11 +3,12 @@ import {
   resolveBranchLocalMoment,
 } from '../engagement/branch-local-time.util';
 import type { CategoryTreeNode, ProductNode } from '../catalog/catalog.types';
+import type { ServingWindow } from '../catalog/product/serving-windows';
 
 /**
- * Cruce entre el árbol de Catalog (con `outsideServingHours: false`) y la
- * hora local de la sucursal. Misma regla de ventana que Happy Hour: el fin
- * es exclusivo y puede cruzar medianoche. Función pura, sin DI.
+ * Cruce entre el árbol de Catalog y la hora local de la sucursal.
+ * Un plato está en horario si cae en CUALQUIERA de sus franjas.
+ * El fin de cada franja es exclusivo y puede cruzar medianoche.
  *
  * No muta `availability`: un plato agotado sigue agotado; uno con horario
  * queda visible con `outsideServingHours: true` cuando no se sirve ahora.
@@ -42,26 +43,25 @@ function applyToProduct(
 ): ProductNode {
   return {
     ...product,
-    outsideServingHours: isOutsideServingHours(product, minuteOfDay),
+    outsideServingHours: isOutsideServingWindows(
+      product.servedWindows,
+      minuteOfDay,
+    ),
   };
 }
 
-function isOutsideServingHours(
-  product: Pick<
-    ProductNode,
-    'servedStartMinuteOfDay' | 'servedEndMinuteOfDay'
-  >,
+function isOutsideServingWindows(
+  windows: readonly ServingWindow[],
   minuteOfDay: number,
 ): boolean {
-  if (
-    product.servedStartMinuteOfDay === null ||
-    product.servedEndMinuteOfDay === null
-  ) {
+  if (!windows || windows.length === 0) {
     return false;
   }
-  return !isWithinMinuteWindow(
-    minuteOfDay,
-    product.servedStartMinuteOfDay,
-    product.servedEndMinuteOfDay,
+  return !windows.some((window) =>
+    isWithinMinuteWindow(
+      minuteOfDay,
+      window.startMinuteOfDay,
+      window.endMinuteOfDay,
+    ),
   );
 }

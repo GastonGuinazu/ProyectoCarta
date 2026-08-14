@@ -26,7 +26,7 @@ import type {
   PublicMenuBranchApiModel,
   PublicMenuTenantApiModel,
 } from '../models/public-menu-response.model';
-import { extractApiErrorCode } from '../../utils/api-error.utils';
+import { extractApiErrorCode, extractApiErrorMessage } from '../../utils/api-error.utils';
 import { MenuStore } from '../stores/menu.store';
 import { TenantStore } from '../stores/tenant.store';
 import { MenuApiService } from './menu-api.service';
@@ -93,10 +93,12 @@ export class TenantResolverService {
         // recalcule con categorías nuevas mientras combos/catálogos todavía
         // reflejan la sucursal anterior.
         const snapshot: MenuSnapshot = {
-          categoriesTree: mapCategoryTree(response.categories),
-          combos: response.combos.map(mapCombo),
-          allergenCatalog: response.catalogs.allergens.map(mapAllergenTag),
-          dietaryTagCatalog: response.catalogs.dietaryTags.map(mapDietaryTag),
+          categoriesTree: mapCategoryTree(response.categories ?? []),
+          combos: (response.combos ?? []).map(mapCombo),
+          allergenCatalog: (response.catalogs?.allergens ?? []).map(mapAllergenTag),
+          dietaryTagCatalog: (response.catalogs?.dietaryTags ?? []).map(
+            mapDietaryTag,
+          ),
           // El backend todavía no envía `meta.menuVersion` (pendiente de
           // definirse junto con la estrategia de invalidación de caché,
           // docs/frontend-architecture.md §3.3) — no se inventa un valor.
@@ -114,8 +116,9 @@ export class TenantResolverService {
   private handleError(error: unknown): void {
     if (error instanceof HttpErrorResponse) {
       if (error.status === 0) {
-        // Sin conectividad / la request nunca llegó al servidor.
-        this.tenantStore.setError();
+        this.tenantStore.setError(
+          'No pudimos contactar el servidor de la carta. Si estás en el teléfono con la PC, usá la IP de la PC (no localhost) y recargá el panel.',
+        );
         this.menuStore.markOffline();
         return;
       }
@@ -129,16 +132,29 @@ export class TenantResolverService {
       }
 
       if (error.status === 404) {
-        // Cubre `TENANT_OR_BRANCH_NOT_FOUND` y cualquier 404 sin `code`
-        // reconocido (docs/api-contracts.md §3.7 no distingue si falló el
-        // tenant o la sucursal).
         this.tenantStore.setNotFound();
+        this.menuStore.markError();
+        return;
+      }
+
+      if (error.status === 429) {
+        this.tenantStore.setError(
+          extractApiErrorMessage(error.error) ??
+            'Demasiadas solicitudes. Probá de nuevo en un momento.',
+        );
+        this.menuStore.markError();
+        return;
+      }
+
+      if (error.status >= 500) {
+        this.tenantStore.setError(
+          'El servidor no pudo armar la carta. Reintentá en un momento.',
+        );
         this.menuStore.markError();
         return;
       }
     }
 
-    // Cualquier otra falla (5xx, timeout, respuesta con forma inesperada).
     this.tenantStore.setError();
     this.menuStore.markError();
   }
@@ -208,18 +224,19 @@ function mapProduct(product: ProductApiModel): ProductSummary {
     // `HttpClient`. Sin este `[...]`, el signal de `MenuStore` terminaría
     // sosteniendo esa misma referencia — el Store deja de ser el único dueño
     // de la estructura. Costo de CPU despreciable (arrays chicos, primitivos).
-    allergenIds: [...product.allergenIds],
-    dietaryTagIds: [...product.dietaryTagIds],
+    allergenIds: [...(product.allergenIds ?? [])],
+    dietaryTagIds: [...(product.dietaryTagIds ?? [])],
+    servedWindows: [...(product.servedWindows ?? [])],
     servedStartMinuteOfDay: product.servedStartMinuteOfDay ?? null,
     servedEndMinuteOfDay: product.servedEndMinuteOfDay ?? null,
     outsideServingHours: product.outsideServingHours === true,
-    images: { ...product.images },
+    images: { ...(product.images ?? { thumbnailUrl: null, detailUrl: null }) },
     webAr: {
-      enabled: product.webAr.enabled,
-      assetUrl: product.webAr.assetUrl,
-      modelUrl: product.webAr.modelUrl ?? null,
+      enabled: product.webAr?.enabled === true,
+      assetUrl: product.webAr?.assetUrl ?? null,
+      modelUrl: product.webAr?.modelUrl ?? null,
     },
-    variantGroups: product.variantGroups.map(mapVariantGroup),
+    variantGroups: (product.variantGroups ?? []).map(mapVariantGroup),
     activePromotion: mapActivePromotion(product.activePromotion),
   };
 }
@@ -244,7 +261,7 @@ function mapCombo(combo: ComboApiModel): ComboSummary {
     currency: combo.currency,
     imageUrl: combo.imageUrl,
     availability: combo.availability,
-    items: combo.items.map(mapComboItemRef),
+    items: (combo.items ?? []).map(mapComboItemRef),
     activePromotion: mapActivePromotion(combo.activePromotion),
   };
 }

@@ -143,6 +143,44 @@ function parseOneOrigin(value: string, isProduction: boolean): string {
   return url.origin;
 }
 
+/**
+ * Orígenes del `ng serve` en la LAN (teléfono en la misma Wi‑Fi).
+ * Solo fuera de producción: en Railway sigue valiendo `PUBLIC_WEB_ORIGIN`.
+ */
+export function isDevLanWebOrigin(origin: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' || url.port !== '4200') {
+    return false;
+  }
+  const host = url.hostname;
+  if (host === 'localhost' || host === '127.0.0.1') {
+    return true;
+  }
+  const parts = host.split('.').map((part) => Number(part));
+  if (
+    parts.length !== 4 ||
+    parts.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)
+  ) {
+    return false;
+  }
+  const [first, second] = parts;
+  if (first === 10) {
+    return true;
+  }
+  if (first === 192 && second === 168) {
+    return true;
+  }
+  if (first === 172 && second >= 16 && second <= 31) {
+    return true;
+  }
+  return false;
+}
+
 export function usesSupabaseTransactionPooler(connectionUrl: string): boolean {
   try {
     return new URL(connectionUrl).port === SUPABASE_TRANSACTION_POOLER_PORT;

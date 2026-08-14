@@ -30,7 +30,7 @@ export class PlanRateLimitRepository {
       where: { slug },
       select: { plan: { select: { rateLimitPerMinute: true } } },
     });
-    const raw = tenant?.plan.rateLimitPerMinute;
+    const raw = tenant?.plan?.rateLimitPerMinute;
     const value = typeof raw === 'number' && raw > 0 ? raw : null;
     this.cache.set(slug, { value, expiresAt: now + CACHE_TTL_MS });
     return value;

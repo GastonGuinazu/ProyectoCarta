@@ -63,13 +63,27 @@ export class ProductCardComponent implements OnDestroy {
   });
   protected readonly servingHoursLabel = computed(() => {
     const product = this.product();
-    if (
-      product.servedStartMinuteOfDay == null ||
-      product.servedEndMinuteOfDay == null
-    ) {
+    const windows =
+      product.servedWindows?.length
+        ? product.servedWindows
+        : product.servedStartMinuteOfDay != null &&
+            product.servedEndMinuteOfDay != null
+          ? [
+              {
+                startMinuteOfDay: product.servedStartMinuteOfDay,
+                endMinuteOfDay: product.servedEndMinuteOfDay,
+              },
+            ]
+          : [];
+    if (windows.length === 0) {
       return null;
     }
-    return `${minutesToTime(product.servedStartMinuteOfDay)} – ${minutesToTime(product.servedEndMinuteOfDay)}`;
+    return windows
+      .map(
+        (window) =>
+          `${minutesToTime(window.startMinuteOfDay)} – ${minutesToTime(window.endMinuteOfDay)}`,
+      )
+      .join(' y ');
   });
   protected readonly thumbnailUrl = computed(
     () => this.product().images.detailUrl ?? this.product().images.thumbnailUrl,

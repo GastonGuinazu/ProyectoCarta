@@ -140,8 +140,12 @@
             formControlName="commercialName"
             maxlength="120"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.commercialName.touched && form.controls.commercialName.invalid"
             (input)="onCommercialNameInput()"
           />
+          @if (form.controls.commercialName.touched && form.controls.commercialName.hasError('required')) {
+            <span class="text-xs text-rose-600">Ingresá el nombre comercial.</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -151,9 +155,14 @@
             formControlName="tenantSlug"
             maxlength="80"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 font-mono text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.tenantSlug.touched && form.controls.tenantSlug.invalid"
             (input)="onTenantSlugInput()"
           />
-          <span class="text-xs text-neutral-500">Va en la URL pública: /m/este-slug/…</span>
+          @if (form.controls.tenantSlug.touched && form.controls.tenantSlug.invalid) {
+            <span class="text-xs text-rose-600">Usá minúsculas, números y guiones (mínimo 2).</span>
+          } @else {
+            <span class="text-xs text-neutral-500">Va en la URL pública: /m/este-slug/…</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -163,8 +172,12 @@
             formControlName="branchName"
             maxlength="120"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.branchName.touched && form.controls.branchName.invalid"
             (input)="onBranchNameInput()"
           />
+          @if (form.controls.branchName.touched && form.controls.branchName.hasError('required')) {
+            <span class="text-xs text-rose-600">Ingresá el nombre de la sucursal.</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -174,8 +187,12 @@
             formControlName="branchSlug"
             maxlength="80"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 font-mono text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.branchSlug.touched && form.controls.branchSlug.invalid"
             (input)="onBranchSlugInput()"
           />
+          @if (form.controls.branchSlug.touched && form.controls.branchSlug.invalid) {
+            <span class="text-xs text-rose-600">Usá minúsculas, números y guiones (mínimo 2).</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -185,7 +202,11 @@
             formControlName="ownerFullName"
             maxlength="120"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.ownerFullName.touched && form.controls.ownerFullName.invalid"
           />
+          @if (form.controls.ownerFullName.touched && form.controls.ownerFullName.hasError('required')) {
+            <span class="text-xs text-rose-600">Ingresá el nombre del dueño.</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -195,7 +216,11 @@
             formControlName="ownerEmail"
             autocomplete="off"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.ownerEmail.touched && form.controls.ownerEmail.invalid"
           />
+          @if (form.controls.ownerEmail.touched && form.controls.ownerEmail.invalid) {
+            <span class="text-xs text-rose-600">Usá un email válido (tiene que tener &#64;).</span>
+          }
         </label>
 
         <label class="flex flex-col gap-1.5">
@@ -205,8 +230,13 @@
             formControlName="ownerPassword"
             autocomplete="new-password"
             class="min-h-11 rounded-xl border border-neutral-200 bg-white px-3 text-sm outline-none ring-neutral-900 focus:ring-2"
+            [class.border-rose-400]="form.controls.ownerPassword.touched && form.controls.ownerPassword.invalid"
           />
-          <span class="text-xs text-neutral-500">Mínimo 8 caracteres.</span>
+          @if (form.controls.ownerPassword.touched && form.controls.ownerPassword.invalid) {
+            <span class="text-xs text-rose-600">Mínimo 8 caracteres.</span>
+          } @else {
+            <span class="text-xs text-neutral-500">Mínimo 8 caracteres.</span>
+          }
         </label>
 
         @if (saveError()) {

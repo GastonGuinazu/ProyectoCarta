@@ -6,8 +6,17 @@ import {
 
 export type MediaUploadKind = 'image' | 'model3d';
 
-const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.jfif', '.png', '.webp']);
 const MODEL_EXTENSIONS = new Set(['.glb', '.usdz']);
+
+const IMAGE_MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
+  'image/jpeg': '.jpg',
+  'image/pjpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/jfif': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
 
 export interface ClassifiedUploadFile {
   readonly kind: MediaUploadKind;
@@ -16,10 +25,15 @@ export interface ClassifiedUploadFile {
 }
 
 /**
- * Clasifica por extensión (fuente de verdad). Los MIME de .glb/.usdz varían
- * según el SO, así que no se usan como criterio de rechazo.
+ * Clasifica por extensión (fuente de verdad). `.jfif` es JPEG (Windows /
+ * descargas). Si la extensión no alcanza, se usa el MIME (`image/jpeg` de
+ * fotos de celular). Los MIME de .glb/.usdz varían según el SO, así que no
+ * se usan como criterio de rechazo.
  */
-export function classifyUploadFile(originalName: string): ClassifiedUploadFile {
+export function classifyUploadFile(
+  originalName: string,
+  mimeType?: string,
+): ClassifiedUploadFile {
   const extension = extensionOf(originalName);
   if (IMAGE_EXTENSIONS.has(extension)) {
     return { kind: 'image', fileType: MediaFileType.IMAGE, extension };
@@ -27,6 +41,13 @@ export function classifyUploadFile(originalName: string): ClassifiedUploadFile {
   if (MODEL_EXTENSIONS.has(extension)) {
     return { kind: 'model3d', fileType: MediaFileType.MODEL_3D, extension };
   }
+
+  const mime = mimeType?.split(';')[0]?.trim().toLowerCase() ?? '';
+  const fromMime = IMAGE_MIME_TO_EXTENSION[mime];
+  if (fromMime) {
+    return { kind: 'image', fileType: MediaFileType.IMAGE, extension: fromMime };
+  }
+
   throw new UnsupportedMediaFileException();
 }
 

@@ -169,6 +169,7 @@ Ninguna. Acceso público de solo lectura (`features-spec.md` §7.1).
               "order": 1,
               "allergenIds": ["alg-lactose"],
               "dietaryTagIds": [],
+              "servedWindows": [],
               "servedStartMinuteOfDay": null,
               "servedEndMinuteOfDay": null,
               "outsideServingHours": false,
@@ -206,6 +207,7 @@ Ninguna. Acceso público de solo lectura (`features-spec.md` §7.1).
               "order": 2,
               "allergenIds": ["alg-gluten", "alg-lactose"],
               "dietaryTagIds": [],
+              "servedWindows": [{ "startMinuteOfDay": 420, "endMinuteOfDay": 720 }],
               "servedStartMinuteOfDay": 420,
               "servedEndMinuteOfDay": 720,
               "outsideServingHours": false,
@@ -258,7 +260,7 @@ Ninguna. Acceso público de solo lectura (`features-spec.md` §7.1).
 
 - **Árbol de categorías anidado** (`children` recursivo) en vez de lista plana con `parentId`: se prioriza que el frontend renderice directamente sin tener que reconstruir el árbol en cliente, alineado con "optimizado para el frontend" pedido en el requisito.
 - **`activePromotion` ya resuelto por el backend**: el frontend nunca decide si una Promo/Happy Hour está vigente ni qué precio final corresponde; solo pinta lo que el backend ya evaluó (regla de `features-spec.md` §3.3, evaluación en backend, nunca en el reloj del dispositivo).
-- **`outsideServingHours` ya resuelto por el backend** con `Branch.timezone`: el plato sigue en el árbol; la carta lo muestra atenuado. `servedStartMinuteOfDay` / `servedEndMinuteOfDay` son minutos `[0, 1439]` (fin exclusivo, puede cruzar medianoche); ambos `null` = sin recorte horario (`features-spec.md` §2.6).
+- **`outsideServingHours` ya resuelto por el backend** con `Branch.timezone`: el plato sigue en el árbol; la carta lo muestra atenuado. `servedWindows` es `{ startMinuteOfDay, endMinuteOfDay }[]` (fin exclusivo, puede cruzar medianoche; vacío = sin recorte). `servedStartMinuteOfDay` / `servedEndMinuteOfDay` replican la primera franja (`features-spec.md` §2.6).
 - **`allergenIds`/`dietaryTagIds` por referencia + catálogo embebido una sola vez** en `catalogs.allergens`/`catalogs.dietaryTags`: evita repetir el objeto completo del tag en cada producto, y habilita el filtrado 100% client-side e instantáneo descrito en `features-spec.md` §5.4.
 - **Todas las traducciones embebidas** (no solo el idioma solicitado): permite el selector de idioma instantáneo sin nueva llamada de red (`features-spec.md` §6.3), coherente con la estrategia offline-first.
 - **`meta.menuVersion`**: hash/versión del catálogo de esa sucursal en ese momento, pensado como `ETag` para la estrategia *Stale-While-Revalidate* de `architecture.md` §4.2.
@@ -458,6 +460,7 @@ Creación de un `Product` desde el Panel Admin (ver `domain-modules.md` §3.2). 
   "order": 1,
   "allergenIds": ["alg-lactose"],
   "dietaryTagIds": [],
+  "servedWindows": [],
   "servedStartMinuteOfDay": null,
   "servedEndMinuteOfDay": null,
   "branchAvailability": {
@@ -495,7 +498,8 @@ Creación de un `Product` desde el Panel Admin (ver `domain-modules.md` §3.2). 
 | `currency` | `string` | Sí | Código ISO 4217. |
 | `sku` | `string` | No | Identificador interno opcional del restaurante. |
 | `allergenIds` / `dietaryTagIds` | `array<string>` | No | Deben referenciar ids del catálogo estandarizado de plataforma (`features-spec.md` §5.1–5.2); no se aceptan tags libres. |
-| `servedStartMinuteOfDay` / `servedEndMinuteOfDay` | `integer` \| `null` | No | Minutos `[0, 1439]` en la zona IANA de la sucursal. Van en par (ambos o ninguno). Fin exclusivo, igual que Happy Hour. `null`/`omitido` = se sirve todo el día. |
+| `servedWindows` | `array<{ startMinuteOfDay, endMinuteOfDay }>` | No | Franjas diarias `[0, 1439]`. Vacío/`omitido` = todo el día. Máx. 6. Cada franja en par; fin exclusivo; puede cruzar medianoche. El plato está en horario si cae en cualquiera. |
+| `servedStartMinuteOfDay` / `servedEndMinuteOfDay` | `integer` \| `null` | No | Legado: un solo rango. Si viene `servedWindows`, manda ese array. |
 | `branchAvailability.mode` | `enum` | Sí | `"ALL_BRANCHES"` o `"SPECIFIC_BRANCHES"`. Si es `SPECIFIC_BRANCHES`, `branchIds` no puede ser vacío. |
 | `media.primaryMediaAssetId` | `string` | Sí | Referencia a un `MediaAsset` ya subido y procesado (estado `ready`, ver `domain-modules.md` §5.4). |
 | `media.ar.enabled` | `boolean` | Sí | Si es `true`, dispara de forma asíncrona el pipeline de recorte de fondo con IA sobre `sourceMediaAssetId` (`domain-modules.md` §5.3). |

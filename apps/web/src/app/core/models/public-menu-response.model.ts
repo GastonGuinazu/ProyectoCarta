@@ -89,6 +89,10 @@ export interface ProductApiModel {
   readonly order: number;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  readonly servedWindows?: readonly {
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  }[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
   readonly outsideServingHours: boolean;

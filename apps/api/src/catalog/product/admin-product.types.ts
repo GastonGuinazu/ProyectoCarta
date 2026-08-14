@@ -31,6 +31,7 @@ export interface AdminProductWriteInput {
   readonly dietaryTagIds: readonly string[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
+  readonly servedWindows: readonly { readonly startMinuteOfDay: number; readonly endMinuteOfDay: number }[];
   readonly primaryMediaAssetId: string | null;
   readonly galleryMediaAssetIds: readonly string[];
   readonly variantGroups: readonly AdminVariantGroupWrite[];
@@ -51,6 +52,7 @@ export interface AdminProductPatchInput {
   readonly dietaryTagIds?: readonly string[];
   readonly servedStartMinuteOfDay?: number | null;
   readonly servedEndMinuteOfDay?: number | null;
+  readonly servedWindows?: readonly { readonly startMinuteOfDay: number; readonly endMinuteOfDay: number }[];
   readonly primaryMediaAssetId?: string | null;
   readonly galleryMediaAssetIds?: readonly string[];
   readonly variantGroups?: readonly AdminVariantGroupWrite[];
@@ -83,6 +85,7 @@ export interface AdminProductRecord {
   readonly dietaryTagIds: readonly string[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
+  readonly servedWindows: readonly { readonly startMinuteOfDay: number; readonly endMinuteOfDay: number }[];
   readonly branchIds: readonly string[];
   readonly primaryMediaAssetId: string | null;
   readonly primaryMediaUrl: string | null;

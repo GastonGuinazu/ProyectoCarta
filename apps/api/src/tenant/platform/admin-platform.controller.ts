@@ -13,7 +13,7 @@ import { RoleType } from '@prisma/client';
 import { RequiredRole } from '../../auth/decorators/required-role.decorator';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
-import { ParseUuidLikePipe } from '../../core';
+import { ParseUuidLikePipe, SkipTenantContext } from '../../core';
 import { AdminPlatformService } from './admin-platform.service';
 import { CreatePlatformTenantDto } from './dto/create-platform-tenant.dto';
 import { ResetOwnerPasswordDto } from './dto/reset-owner-password.dto';
@@ -21,9 +21,12 @@ import { UpdatePlatformTenantStatusDto } from './dto/update-platform-tenant-stat
 
 /**
  * Consola de plataforma: alta de restaurantes (Tenant + OWNER + Casa Matriz).
- * Solo `PLATFORM_ADMIN`. Sin `@RequireTenantContext()`: se opera cross-tenant
- * con Prisma crudo (docs/backend-architecture.md §4.2).
+ * Solo `PLATFORM_ADMIN`. Cross-tenant con Prisma crudo
+ * (docs/backend-architecture.md §4.2). `@SkipTenantContext()`: un
+ * `X-Tenant-Id` de impersonación (p. ej. el seed local `don-luigi`) no
+ * debe 404-ear el listado ni el alta.
  */
+@SkipTenantContext()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @RequiredRole(RoleType.PLATFORM_ADMIN)
 @Controller('admin/platform/tenants')

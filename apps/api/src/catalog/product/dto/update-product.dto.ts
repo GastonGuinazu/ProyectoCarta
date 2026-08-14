@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsEnum,
@@ -20,6 +21,7 @@ import { AvailabilityStatus } from '@prisma/client';
 import {
   BranchAvailabilityDto,
   ProductMediaDto,
+  ServingWindowDto,
   VariantGroupDto,
 } from './create-product.dto';
 import { IsLocalizedText } from './is-localized-text.validator';
@@ -87,6 +89,13 @@ export class UpdateProductDto {
   @Min(0)
   @Max(1439)
   servedEndMinuteOfDay?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @ValidateNested({ each: true })
+  @Type(() => ServingWindowDto)
+  servedWindows?: ServingWindowDto[];
 
   @IsOptional()
   @ValidateNested()

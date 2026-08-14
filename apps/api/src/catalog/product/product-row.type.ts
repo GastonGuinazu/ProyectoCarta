@@ -38,6 +38,7 @@ export interface ProductRow {
   readonly dietaryTagIds: readonly string[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
+  readonly servedWindows: readonly { readonly startMinuteOfDay: number; readonly endMinuteOfDay: number }[];
   /**
    * Id del `MediaAsset` asociado vía `ProductMedia` con `role: PRIMARY`
    * e `fileType: IMAGE` (`null` si todavía no hay foto de presentación).

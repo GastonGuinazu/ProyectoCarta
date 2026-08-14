@@ -1,15 +1,18 @@
 /**
  * Configuración de build de desarrollo (`ng serve` / `development` en
  * `angular.json`). `apps/api` corre en un puerto/origen distinto al de `ng
- * serve`, por eso acá `apiBaseUrl` es absoluto.
+ * serve`, por eso acá `apiBaseUrl` es absoluto. En la LAN (teléfono) usa el
+ * mismo hostname que la página, no `localhost` del celular.
  */
+import { resolveDevApiBaseUrl } from './dev-api-base';
+
 export const environment = {
   production: false,
-  apiBaseUrl: 'http://localhost:3000/api/v1',
+  apiBaseUrl: resolveDevApiBaseUrl(),
   /**
-   * Impersonación temporal de PLATFORM_ADMIN en local (tenant seed `don-luigi`).
-   * En Vercel (`environment.ts`) queda `null`: el selector de tenant todavía no
-   * existe y el bundle de producción no debe impersonar un tenant de seed.
+   * Impersonación de PLATFORM_ADMIN. `null` = Gestión Global sin tenant
+   * (igual que Vercel). El seed `don-luigi` ya no está; un id fijo 404-eaba
+   * el listado. Para cargar el catálogo, entrar como dueño del restaurante.
    */
-  platformImpersonationTenantId: '00000000-0000-0000-0000-0000000000f2',
+  platformImpersonationTenantId: null as string | null,
 };

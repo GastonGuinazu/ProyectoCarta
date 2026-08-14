@@ -5,6 +5,7 @@ import {
   computed,
   inject,
   input,
+  OnDestroy,
   OnInit,
   signal,
 } from '@angular/core';
@@ -30,6 +31,12 @@ import {
   upsertLocalizedText,
 } from '../../../utils/localized-text.utils';
 import {
+  IMAGE_UPLOAD_ACCEPT,
+  IMAGE_UPLOAD_HINT,
+  IMAGE_UPLOAD_TYPE_ERROR,
+  isAcceptedImageFile,
+} from '../../../utils/image-upload.utils';
+import {
   centsToMajorUnits,
   formatPriceFromCents,
   majorUnitsToCents,
@@ -48,7 +55,7 @@ import type {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './combo-form.component.html',
 })
-export class ComboFormComponent implements OnInit {
+export class ComboFormComponent implements OnInit, OnDestroy {
   private readonly catalogApi = inject(AdminCatalogApiService);
   private readonly authStore = inject(AuthStore);
   private readonly router = inject(Router);
@@ -69,6 +76,13 @@ export class ComboFormComponent implements OnInit {
   private readonly formTick = signal(0);
 
   protected readonly isEdit = computed(() => Boolean(this.id()));
+  protected readonly imageUploadAccept = IMAGE_UPLOAD_ACCEPT;
+  protected readonly imageUploadHint = IMAGE_UPLOAD_HINT;
+  protected readonly pendingImage = signal<File | null>(null);
+  private pendingImageUrl: string | null = null;
+  protected readonly canUpload = computed(
+    () => !this.uploading() && !this.removingImage() && !this.loading(),
+  );
   protected readonly pageTitle = computed(() =>
     this.isEdit() ? 'Editar combo' : 'Nuevo combo',
   );
@@ -147,6 +161,10 @@ export class ComboFormComponent implements OnInit {
     void this.load();
   }
 
+  ngOnDestroy(): void {
+    this.revokePendingUrl();
+  }
+
   protected get items(): FormArray<ItemGroup> {
     return this.form.controls.items;
   }
@@ -188,16 +206,24 @@ export class ComboFormComponent implements OnInit {
   }
 
   protected askRemoveImage(): void {
+    if (!this.canUpload()) {
+      return;
+    }
     this.pendingRemoveImage.set(true);
   }
 
   protected cancelRemoveImage(): void {
+    if (this.removingImage()) {
+      return;
+    }
     this.pendingRemoveImage.set(false);
   }
 
   protected async confirmRemoveImage(): Promise<void> {
     const comboId = this.id();
     if (!comboId) {
+      this.clearPendingImage();
+      this.pendingRemoveImage.set(false);
       return;
     }
     this.removingImage.set(true);
@@ -215,15 +241,63 @@ export class ComboFormComponent implements OnInit {
   }
 
   private async uploadImage(file: File): Promise<void> {
+    if (this.uploading()) {
+      return;
+    }
+    if (!isAcceptedImageFile(file)) {
+      this.uploadError.set(IMAGE_UPLOAD_TYPE_ERROR);
+      return;
+    }
+
     const comboId = this.id();
-    if (!comboId || this.uploading()) {
+    if (!comboId) {
+      this.stagePendingImage(file);
       return;
     }
-    const name = file.name.toLowerCase();
-    if (!/\.(jpe?g|png|webp)$/.test(name)) {
-      this.uploadError.set('La foto del combo solo acepta .jpg, .png o .webp.');
-      return;
+
+    const error = await this.sendUpload(comboId, file);
+    if (error) {
+      this.uploadError.set(error);
     }
+  }
+
+  private stagePendingImage(file: File): void {
+    const url = URL.createObjectURL(file);
+    this.uploadError.set(null);
+    this.revokePendingUrl();
+    this.pendingImageUrl = url;
+    this.pendingImage.set(file);
+    this.imagePreview.set(url);
+  }
+
+  private clearPendingImage(): void {
+    this.revokePendingUrl();
+    this.pendingImage.set(null);
+    this.imagePreview.set(null);
+  }
+
+  private revokePendingUrl(): void {
+    if (this.pendingImageUrl) {
+      URL.revokeObjectURL(this.pendingImageUrl);
+      this.pendingImageUrl = null;
+    }
+  }
+
+  private async flushPendingUpload(comboId: string): Promise<string | null> {
+    const pending = this.pendingImage();
+    if (!pending) {
+      return null;
+    }
+    const error = await this.sendUpload(comboId, pending);
+    if (error) {
+      return error;
+    }
+    this.revokePendingUrl();
+    this.pendingImage.set(null);
+    return null;
+  }
+
+  private async sendUpload(comboId: string, file: File): Promise<string | null> {
     this.uploading.set(true);
     this.uploadError.set(null);
     try {
@@ -231,8 +305,9 @@ export class ComboFormComponent implements OnInit {
         this.catalogApi.uploadComboMedia(comboId, file),
       );
       this.imagePreview.set(result.publicUrl);
+      return null;
     } catch (error: unknown) {
-      this.uploadError.set(this.messageForSaveError(error));
+      return this.messageForUploadError(error);
     } finally {
       this.uploading.set(false);
     }
@@ -281,7 +356,13 @@ export class ComboFormComponent implements OnInit {
       if (comboId) {
         await firstValueFrom(this.catalogApi.updateCombo(comboId, body));
       } else {
-        await firstValueFrom(this.catalogApi.createCombo(body));
+        const created = await firstValueFrom(this.catalogApi.createCombo(body));
+        const uploadError = await this.flushPendingUpload(created.id);
+        if (uploadError) {
+          this.uploadError.set(uploadError);
+          await this.router.navigate(['/admin/catalog/combos', created.id, 'edit']);
+          return;
+        }
       }
       await this.router.navigateByUrl('/admin/catalog/combos');
     } catch (error: unknown) {
@@ -373,6 +454,38 @@ export class ComboFormComponent implements OnInit {
       }
     }
     return 'No pudimos guardar el combo. Intentá de nuevo.';
+  }
+
+  private messageForUploadError(error: unknown): string {
+    if (error instanceof HttpErrorResponse) {
+      const code = extractApiErrorCode(error.error);
+      switch (code) {
+        case 'UNSUPPORTED_MEDIA_TYPE':
+        case 'MEDIA_SLOT_TYPE_MISMATCH':
+          return IMAGE_UPLOAD_TYPE_ERROR;
+        case 'MEDIA_FILE_TOO_LARGE':
+          return (
+            extractApiErrorMessage(error.error) ??
+            'El archivo supera el tamaño máximo permitido.'
+          );
+        case 'STORAGE_QUOTA_EXCEEDED':
+          return 'Alcanzaste el límite de almacenamiento de tu plan.';
+        case 'STORAGE_NOT_CONFIGURED':
+          return 'Falta configurar el almacenamiento de archivos en el servidor.';
+        case 'MEDIA_UPLOAD_FAILED':
+          return 'No pudimos guardar el archivo. Intentá de nuevo.';
+        case 'MISSING_FILE':
+          return 'Adjuntá un archivo para subir.';
+      }
+      if (error.status === 0) {
+        return 'No pudimos conectar con el servidor. Intentá de nuevo.';
+      }
+      const message = extractApiErrorMessage(error.error);
+      if (message) {
+        return message;
+      }
+    }
+    return 'No pudimos subir la foto. Intentá de nuevo.';
   }
 }
 

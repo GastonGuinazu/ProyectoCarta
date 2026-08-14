@@ -65,10 +65,15 @@ export interface ProductNode {
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
   /**
-   * Minutos `[0, 1439]` en la zona IANA de la sucursal. Ambos `null` = sin
-   * recorte horario. El fin es exclusivo. `CatalogService` no evalúa "ahora":
-   * `outsideServingHours` lo puebla `PublicMenuModule`.
+   * Franjas diarias en minutos `[0, 1439]`. Vacío = sin recorte horario.
+   * El par `servedStart`/`servedEnd` replica la primera franja (compat).
+   * `CatalogService` no evalúa "ahora": `outsideServingHours` lo puebla
+   * `PublicMenuModule`.
    */
+  readonly servedWindows: readonly {
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  }[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
   /** Poblado por `PublicMenuModule` vía `apply-serving-hours.util.ts`; `false` en Catalog. */

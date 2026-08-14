@@ -62,7 +62,9 @@ La eliminación de una `Category` que tiene categorías hijas y/o productos asoc
 
 ### 2.6 Horario de servicio por producto
 
-Un Producto puede definir una ventana diaria opcional (`servedStartMinuteOfDay` / `servedEndMinuteOfDay`, minutos `[0, 1439]`). Si ambos campos son `null`, se sirve todo el día. Van en par: no se acepta solo una hora. El fin es **exclusivo** (a las 15:00 ya no se sirve si el hasta es 15:00) y el rango puede cruzar medianoche, con la misma regla que Happy Hour.
+Un Producto puede definir **una o más franjas** diarias opcionales (`servedWindows`: `{ startMinuteOfDay, endMinuteOfDay }[]`, minutos `[0, 1439]`). Si el array está vacío, se sirve todo el día. Cada franja va en par: no se acepta solo una hora. El fin es **exclusivo** (a las 15:00 ya no se sirve si el hasta es 15:00) y una franja puede cruzar medianoche, con la misma regla que Happy Hour. El plato está “en horario” si cae en **cualquiera** de las franjas (ej. almuerzo 12:00–16:00 y cena 20:00–00:00).
+
+Los campos `servedStartMinuteOfDay` / `servedEndMinuteOfDay` del contrato público replican la **primera** franja (compatibilidad); la evaluación usa `servedWindows`.
 
 La evaluación es en el **backend**, con la zona IANA de la sucursal (`Branch.timezone`), nunca con el reloj del celular del comensal ni con el del servidor. Fuera de la ventana el plato **sigue visible** en la carta, atenuado, con `outsideServingHours: true` y la etiqueta “Fuera de horario”. No se pisa el enum `availability`: un plato `OUT_OF_STOCK` sigue “No disponible” aunque esté en horario.
 
@@ -85,7 +87,7 @@ Un mismo `Product` puede estar alcanzado simultáneamente por múltiples `Promo`
 2. **Regla de desempate por especificidad**: si dos promociones solapadas tienen la misma prioridad numérica, se aplica la que tenga **el alcance más específico** (una promo dirigida directamente a un Product específico tiene precedencia sobre una que alcanza a ese producto de forma heredada a través de su Category).
 3. **Regla de desempate final por recencia**: si persiste el empate tras aplicar especificidad, se aplica la promoción **creada más recientemente**, como criterio de último recurso determinístico.
 4. **No acumulación implícita**: el sistema **no combina/suma automáticamente** los porcentajes o montos de descuento de dos promociones distintas sobre el mismo producto. Si el negocio realmente desea un descuento combinado, debe modelarse como una única Promo con el valor final deseado.
-5. **Transparencia al comensal**: cuando un producto tiene una promoción activa, la interfaz pública debe indicar claramente el motivo (ej. una etiqueta "Happy Hour" o "Promo" con el nombre correspondiente), evitando ambigüedad sobre por qué el precio mostrado difiere del precio de lista.
+5. **Transparencia al comensal**: cuando un producto tiene una promoción activa, la interfaz pública debe indicar claramente el motivo (ej. una etiqueta "Happy Hour" o "Promo" con el nombre correspondiente), evitando ambigüedad sobre por qué el precio mostrado difiere del precio de lista. El precio promocional se muestra en rojo; el precio de lista queda tachado al lado.
 
 En la carta pública el orden de secciones es: **Happy Hour** (solo si hay al menos un plato cuya oferta ganadora es un Happy Hour vigente) → **Combos** → **categorías/productos** en el orden configurado por el dueño. Un plato en Happy Hour también sigue apareciendo en su categoría, con el mismo precio ganador (no se acumulan descuentos). Un Happy Hour nuevo arranca con prioridad `10` y una Promo con `0`, para que durante el horario del Happy Hour gane ese descuento si el dueño no indica lo contrario.
 

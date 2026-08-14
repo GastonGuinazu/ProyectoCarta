@@ -143,6 +143,7 @@ function toProductNode(product: ProductRow): ProductNode {
     order: product.order,
     allergenIds: product.allergenIds,
     dietaryTagIds: product.dietaryTagIds,
+    servedWindows: product.servedWindows,
     servedStartMinuteOfDay: product.servedStartMinuteOfDay,
     servedEndMinuteOfDay: product.servedEndMinuteOfDay,
     outsideServingHours: false,

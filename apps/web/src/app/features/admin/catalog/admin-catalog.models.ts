@@ -53,6 +53,10 @@ export interface AdminProductDetail {
   readonly availability: AdminProductAvailability;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
+  readonly servedWindows: readonly {
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  }[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
   readonly media?: {
@@ -86,8 +90,10 @@ export interface AdminProductWritePayload {
   readonly availability: AdminProductAvailability;
   readonly allergenIds: readonly string[];
   readonly dietaryTagIds: readonly string[];
-  readonly servedStartMinuteOfDay: number | null;
-  readonly servedEndMinuteOfDay: number | null;
+  readonly servedWindows: readonly {
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  }[];
 }
 
 export interface AdminComboItem {

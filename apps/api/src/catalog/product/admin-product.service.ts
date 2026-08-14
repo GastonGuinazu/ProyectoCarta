@@ -27,6 +27,12 @@ import {
 } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import { ProductRepository } from './product.repository';
+import {
+  firstServingWindow,
+  resolveServingWindows,
+  type ServingWindow,
+  type ServingWindowError,
+} from './serving-windows';
 
 @Injectable()
 export class AdminProductService {
@@ -92,10 +98,7 @@ export class AdminProductService {
       await this.assertSkuAvailable(tenantId, dto.sku);
     }
     await this.assertTags(dto.allergenIds ?? [], dto.dietaryTagIds ?? []);
-    this.assertServingHours(
-      dto.servedStartMinuteOfDay ?? null,
-      dto.servedEndMinuteOfDay ?? null,
-    );
+    const servingHours = this.requireServingWindows(dto);
     const branchIds = await this.resolveBranchIds(tenantId, dto);
     await this.assertMedia(dto);
 
@@ -106,7 +109,7 @@ export class AdminProductService {
 
     const created = await this.productRepository.createAdmin(
       tenantId,
-      this.toWriteInput(dto, slug, branchIds),
+      this.toWriteInput(dto, slug, branchIds, servingHours),
     );
     return toResponse(created, dto.media?.ar?.enabled ?? false);
   }
@@ -145,17 +148,21 @@ export class AdminProductService {
       await this.assertTags(dto.allergenIds ?? [], dto.dietaryTagIds ?? []);
     }
     if (
+      dto.servedWindows !== undefined ||
       dto.servedStartMinuteOfDay !== undefined ||
       dto.servedEndMinuteOfDay !== undefined
     ) {
-      this.assertServingHours(
-        dto.servedStartMinuteOfDay !== undefined
-          ? dto.servedStartMinuteOfDay
-          : existing.servedStartMinuteOfDay,
-        dto.servedEndMinuteOfDay !== undefined
-          ? dto.servedEndMinuteOfDay
-          : existing.servedEndMinuteOfDay,
-      );
+      this.requireServingWindows({
+        servedWindows: dto.servedWindows,
+        servedStartMinuteOfDay:
+          dto.servedStartMinuteOfDay !== undefined
+            ? dto.servedStartMinuteOfDay
+            : existing.servedStartMinuteOfDay,
+        servedEndMinuteOfDay:
+          dto.servedEndMinuteOfDay !== undefined
+            ? dto.servedEndMinuteOfDay
+            : existing.servedEndMinuteOfDay,
+      });
     }
     const branchIds = dto.branchAvailability
       ? await this.resolveBranchIds(tenantId, dto)
@@ -167,10 +174,7 @@ export class AdminProductService {
     const updated = await this.productRepository.updateAdmin(
       tenantId,
       productId,
-      this.toPatchInput(dto, branchIds, {
-        servedStartMinuteOfDay: existing.servedStartMinuteOfDay,
-        servedEndMinuteOfDay: existing.servedEndMinuteOfDay,
-      }),
+      this.toPatchInput(dto, branchIds, existing),
     );
     return toResponse(updated, dto.media?.ar?.enabled ?? false);
   }
@@ -275,28 +279,19 @@ export class AdminProductService {
     }
   }
 
-  private assertServingHours(
-    startMinuteOfDay: number | null,
-    endMinuteOfDay: number | null,
-  ): void {
-    const hasStart = startMinuteOfDay !== null;
-    const hasEnd = endMinuteOfDay !== null;
-    if (hasStart !== hasEnd) {
+  private requireServingWindows(dto: {
+    readonly servedWindows?: unknown;
+    readonly servedStartMinuteOfDay?: number | null;
+    readonly servedEndMinuteOfDay?: number | null;
+  }): ServingWindow[] {
+    const { windows, error } = resolveServingWindows(dto);
+    if (error) {
       throw new ProductValidationException(
-        'servedEndMinuteOfDay',
-        'Indicá hora de inicio y de fin, o dejá ambas vacías.',
+        'servedWindows',
+        messageForServingWindowError(error),
       );
     }
-    if (
-      hasStart &&
-      hasEnd &&
-      startMinuteOfDay === endMinuteOfDay
-    ) {
-      throw new ProductValidationException(
-        'servedEndMinuteOfDay',
-        'La hora de fin debe ser distinta a la de inicio.',
-      );
-    }
+    return windows;
   }
 
   private async resolveBranchIds(
@@ -359,10 +354,12 @@ export class AdminProductService {
     dto: CreateProductDto,
     slug: string,
     branchIds: readonly string[],
+    servingHours: readonly ServingWindow[],
   ): AdminProductWriteInput {
     const allBranches =
       !dto.branchAvailability ||
       dto.branchAvailability.mode === BranchAvailabilityMode.ALL_BRANCHES;
+    const first = firstServingWindow(servingHours);
 
     return {
       categoryId: dto.categoryId,
@@ -378,8 +375,9 @@ export class AdminProductService {
       branchIds: allBranches ? [] : branchIds,
       allergenIds: dto.allergenIds ?? [],
       dietaryTagIds: dto.dietaryTagIds ?? [],
-      servedStartMinuteOfDay: dto.servedStartMinuteOfDay ?? null,
-      servedEndMinuteOfDay: dto.servedEndMinuteOfDay ?? null,
+      servedStartMinuteOfDay: first.startMinuteOfDay,
+      servedEndMinuteOfDay: first.endMinuteOfDay,
+      servedWindows: servingHours,
       primaryMediaAssetId: dto.media?.primaryMediaAssetId ?? null,
       galleryMediaAssetIds: dto.media?.galleryMediaAssetIds ?? [],
       variantGroups: toVariantWrites(dto.variantGroups),
@@ -389,14 +387,30 @@ export class AdminProductService {
   private toPatchInput(
     dto: UpdateProductDto,
     branchIds?: readonly string[],
-    existingHours?: {
+    existing?: {
       readonly servedStartMinuteOfDay: number | null;
       readonly servedEndMinuteOfDay: number | null;
+      readonly servedWindows: readonly ServingWindow[];
     },
   ): AdminProductPatchInput {
     const servingHoursTouched =
+      dto.servedWindows !== undefined ||
       dto.servedStartMinuteOfDay !== undefined ||
       dto.servedEndMinuteOfDay !== undefined;
+    const servingHours = servingHoursTouched
+      ? this.requireServingWindows({
+          servedWindows: dto.servedWindows,
+          servedStartMinuteOfDay:
+            dto.servedStartMinuteOfDay !== undefined
+              ? dto.servedStartMinuteOfDay
+              : (existing?.servedStartMinuteOfDay ?? null),
+          servedEndMinuteOfDay:
+            dto.servedEndMinuteOfDay !== undefined
+              ? dto.servedEndMinuteOfDay
+              : (existing?.servedEndMinuteOfDay ?? null),
+        })
+      : undefined;
+    const first = servingHours ? firstServingWindow(servingHours) : undefined;
     const patch: AdminProductPatchInput = {
       ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
       ...(dto.name !== undefined ? { name: dto.name } : {}),
@@ -416,16 +430,11 @@ export class AdminProductService {
       ...(dto.dietaryTagIds !== undefined
         ? { dietaryTagIds: dto.dietaryTagIds }
         : {}),
-      ...(servingHoursTouched
+      ...(servingHoursTouched && first && servingHours
         ? {
-            servedStartMinuteOfDay:
-              dto.servedStartMinuteOfDay !== undefined
-                ? dto.servedStartMinuteOfDay
-                : (existingHours?.servedStartMinuteOfDay ?? null),
-            servedEndMinuteOfDay:
-              dto.servedEndMinuteOfDay !== undefined
-                ? dto.servedEndMinuteOfDay
-                : (existingHours?.servedEndMinuteOfDay ?? null),
+            servedStartMinuteOfDay: first.startMinuteOfDay,
+            servedEndMinuteOfDay: first.endMinuteOfDay,
+            servedWindows: servingHours,
           }
         : {}),
       ...(dto.variantGroups !== undefined
@@ -482,6 +491,10 @@ export interface AdminProductResponse {
   readonly dietaryTagIds: readonly string[];
   readonly servedStartMinuteOfDay: number | null;
   readonly servedEndMinuteOfDay: number | null;
+  readonly servedWindows: readonly {
+    readonly startMinuteOfDay: number;
+    readonly endMinuteOfDay: number;
+  }[];
   readonly branchAvailability: {
     readonly mode: BranchAvailabilityMode;
     readonly branchIds: readonly string[];
@@ -511,6 +524,19 @@ export interface AdminProductResponse {
   }[];
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+function messageForServingWindowError(error: ServingWindowError): string {
+  switch (error) {
+    case 'SERVING_HOURS_PAIR':
+      return 'Indicá hora de inicio y de fin, o dejá ambas vacías.';
+    case 'SERVING_WINDOW_SAME':
+      return 'En cada franja, la hora de fin debe ser distinta a la de inicio.';
+    case 'MAX_SERVING_WINDOWS':
+      return 'Podés cargar hasta 6 franjas horarias.';
+    default:
+      return 'Revisá las franjas horarias.';
+  }
 }
 
 function toVariantWrites(
@@ -548,6 +574,7 @@ function toResponse(
     dietaryTagIds: record.dietaryTagIds,
     servedStartMinuteOfDay: record.servedStartMinuteOfDay,
     servedEndMinuteOfDay: record.servedEndMinuteOfDay,
+    servedWindows: record.servedWindows,
     branchAvailability: {
       mode: record.availableInAllBranches
         ? BranchAvailabilityMode.ALL_BRANCHES

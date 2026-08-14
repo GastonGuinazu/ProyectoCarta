@@ -188,7 +188,7 @@ Un ítem individual del menú.
 - **Categoría** a la que pertenece (referencia a una Category, típicamente una categoría "hoja" del árbol, aunque el modelo no debe impedir productos en categorías intermedias).
 - **Imágenes/video** asociados (referencia a Media & AR, incluyendo el asset preparado para WebAR).
 - **Estado de disponibilidad** (disponible, agotado temporalmente, descontinuado).
-- **Horario de servicio opcional** (minuto de inicio y de fin del día, en la zona IANA de la sucursal; si no hay horario, se sirve todo el día).
+- **Horario de servicio opcional** (una o más franjas de minutos de inicio/fin del día, en la zona IANA de la sucursal; si no hay horario, se sirve todo el día).
 - **Tags de alérgenos y preferencias dietéticas** (ver `features-spec.md`).
 - **Orden de visualización** dentro de su categoría.
 - **Sucursales en las que está disponible** (para cadenas donde no todos los locales ofrecen el mismo producto).

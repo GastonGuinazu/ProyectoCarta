@@ -25,11 +25,13 @@ export class TenantStore {
   private readonly _branch = signal<BranchInfo | null>(null);
   private readonly _features = signal<TenantFeatureFlags | null>(null);
   private readonly _resolutionStatus = signal<TenantResolutionStatus>('idle');
+  private readonly _resolutionErrorMessage = signal<string | null>(null);
 
   readonly tenant = this._tenant.asReadonly();
   readonly branch = this._branch.asReadonly();
   readonly features = this._features.asReadonly();
   readonly resolutionStatus = this._resolutionStatus.asReadonly();
+  readonly resolutionErrorMessage = this._resolutionErrorMessage.asReadonly();
 
   readonly isResolved = computed(() => this._resolutionStatus() === 'resolved');
   readonly isWebArEnabled = computed(() => this._features()?.webArEnabled ?? false);
@@ -56,6 +58,7 @@ export class TenantStore {
 
   setResolving(): void {
     this._resolutionStatus.set('resolving');
+    this._resolutionErrorMessage.set(null);
   }
 
   /**
@@ -71,11 +74,13 @@ export class TenantStore {
     this._branch.set(data.branch);
     this._features.set(data.features);
     this._resolutionStatus.set('resolved');
+    this._resolutionErrorMessage.set(null);
   }
 
   /** Refleja `TENANT_OR_BRANCH_NOT_FOUND` (docs/api-contracts.md §3.7). */
   setNotFound(): void {
     this._resolutionStatus.set('notFound');
+    this._resolutionErrorMessage.set(null);
     this._tenant.set(null);
     this._branch.set(null);
     this._features.set(null);
@@ -84,14 +89,19 @@ export class TenantStore {
   /** Refleja `TENANT_SUSPENDED` (docs/api-contracts.md §3.7). */
   setSuspended(): void {
     this._resolutionStatus.set('suspended');
+    this._resolutionErrorMessage.set(null);
     this._tenant.set(null);
     this._branch.set(null);
     this._features.set(null);
   }
 
   /** Cualquier falla que no sea un caso de negocio reconocido (red, 500, timeout, etc.). */
-  setError(): void {
+  setError(message?: string): void {
     this._resolutionStatus.set('error');
+    this._resolutionErrorMessage.set(
+      message ??
+        'No pudimos cargar el menú. Revisá tu conexión e intentá de nuevo.',
+    );
     this._tenant.set(null);
     this._branch.set(null);
     this._features.set(null);
@@ -102,6 +112,7 @@ export class TenantStore {
     this._branch.set(null);
     this._features.set(null);
     this._resolutionStatus.set('idle');
+    this._resolutionErrorMessage.set(null);
     this.previousBranchId = null;
   }
 }

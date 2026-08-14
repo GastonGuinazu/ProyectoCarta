@@ -120,7 +120,7 @@ Rutas conceptuales (todas bajo `loadChildren` de `/admin`):
 - `/admin/platform/**` — `{ roles: ['PLATFORM_ADMIN'] }`. Alta de restaurantes, cambio de estado de cuenta y reset de clave del dueño (`POST` / `PATCH .../status` / `POST .../reset-owner-password` de `/api/v1/admin/platform/tenants`).
 - `/admin/account` — cualquier sesión autenticada. Cambio de contraseña (`POST /api/v1/admin/auth/change-password`).
 - `/admin/metrics` — resumen de visitas (cada apertura o recarga de la carta), tiempo en carta, búsquedas, filtros y AR (`GET /api/v1/admin/analytics/summary`). Filtra por sucursal activa.
-- `/admin/promos` — listado y alta de Promos (ventana de fechas) y Happy Hours (días + horario). El formulario de producto (`/admin/catalog/:id/edit`) carga en paralelo `GET /api/v1/admin/engagement/product-offers?productId=` para mostrar el precio que ve el comensal y permitir editar/eliminar esa oferta sin mezclar Engagement en el contrato de catálogo. El mismo formulario carga `GET /api/v1/admin/catalog/tags` para alérgenos/dietas y permite un horario de servicio opcional. La foto del combo se edita en un aside a la derecha, igual que la del producto. El layout del panel y Configuración ofrecen **Ver carta** / **Abrir carta**. La zona horaria de la sucursal se edita en `/admin/settings`. Implementación: `features/admin/promos/`.
+- `/admin/promos` — listado y alta de Promos (ventana de fechas) y Happy Hours (días + horario). El formulario de producto (`/admin/catalog/:id/edit`) carga en paralelo `GET /api/v1/admin/engagement/product-offers?productId=` para mostrar el precio que ve el comensal y permitir editar/eliminar esa oferta sin mezclar Engagement en el contrato de catálogo. El mismo formulario carga `GET /api/v1/admin/catalog/tags` para alérgenos/dietas y permite una o más franjas de horario de servicio. En el alta de producto y de combo se puede elegir la foto antes de guardar (se sube al crear). JPG/JPEG/JFIF/PNG/WebP en todos los cargadores de foto 2D (producto, combo, logo, portada); el slot 3D del producto sigue en `.glb`/`.usdz`. En la carta, el precio promocional va en rojo y el de lista tachado. La foto del combo se edita en un aside a la derecha, igual que la del producto. El layout del panel y Configuración ofrecen **Ver carta** / **Abrir carta**. La zona horaria de la sucursal se edita en `/admin/settings`. Implementación: `features/admin/promos/`.
 
 ### 2.8 Estado Derivado (Computed Signals)
 
@@ -155,7 +155,7 @@ Esta separación es intencional: el caché de `ngsw` no ofrece un hook nativo pa
 |---|---|---|---|
 | `app-shell` | build de Angular (JS/CSS/HTML) | `installMode: prefetch` | Debe estar disponible instantáneamente offline desde la primera visita. |
 | `menu-images` | assets de Cloudinary de productos/categorías | `performance` (cache-first, `maxAge` largo) | Coincide con `architecture.md` §4.2, fila "Imágenes de productos". |
-| `menu-api-raw` | `GET …/api/v1/menu/public/**` (path relativo en local; URL absoluta `api.<dominio>` en prod, `docs/hosting.md`) | `freshness` (network-first con timeout corto, fallback a caché) | Capa de resiliencia adicional a nivel HTTP; el timeout evita que una red lenta bloquee la carga inicial. |
+| Menú JSON (`GET /api/v1/menu/public/**`) | **fuera de `ngsw`** | `HttpClient` + `IndexedDB` | Un `freshness` con timeout de 3s **falla** la primera visita en 4G si no hay caché (el panel admin no pasaba por ese grupo y sí cargaba). |
 | `admin-api` | `/api/v1/admin/**` | **Excluido explícitamente de cacheo persistente** | Los datos del Panel Admin son sensibles a permisos/RBAC y cambian con la sesión; no deben quedar cacheados fuera del control de la app. |
 
 ### 3.3 Flujo Lógico: Interceptación de `GET /api/v1/menu/public/:tenantSlug/:branchSlug`
@@ -182,10 +182,8 @@ sequenceDiagram
 
     rect rgb(235, 255, 235)
     note over Sync,API: Paso 2 — Revalidación en background (no bloqueante)
-    Sync->>SW: GET /api/v1/menu/public/:tenantSlug/:branchSlug (If-None-Match: vX)
-    SW->>API: forwardea la request (según estrategia freshness)
-    API-->>SW: 200 OK (menuVersion = vY) o 304 Not Modified
-    SW-->>Sync: respuesta de red (o fallback de caché ngsw si no hay red)
+    Sync->>API: GET /api/v1/menu/public/:tenantSlug/:branchSlug (HttpClient, sin dataGroup ngsw)
+    API-->>Sync: 200 OK (menuVersion = vY) o error de red
     end
 
     alt menuVersion cambió (vY ≠ vX)

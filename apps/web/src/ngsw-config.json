@@ -36,19 +36,6 @@
         "maxSize": 200,
         "maxAge": "30d"
       }
-    },
-    {
-      "name": "menu-api-raw",
-      "urls": [
-        "/api/v1/menu/public/**",
-        "**/api/v1/menu/public/**"
-      ],
-      "cacheConfig": {
-        "strategy": "freshness",
-        "maxSize": 50,
-        "maxAge": "1d",
-        "timeout": "3s"
-      }
     }
   ]
 }

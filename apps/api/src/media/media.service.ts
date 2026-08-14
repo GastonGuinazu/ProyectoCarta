@@ -87,7 +87,7 @@ export class MediaService {
       throw new LinkedProductNotFoundException();
     }
 
-    const classified = classifyUploadFile(file.originalname);
+    const classified = classifyUploadFile(file.originalname, file.mimetype);
     const expectedKind = slot === 'presentation' ? 'image' : 'model3d';
     if (classified.kind !== expectedKind) {
       throw new MediaSlotTypeMismatchException(slot);
@@ -146,7 +146,7 @@ export class MediaService {
     }
 
     const tenantId = this.tenantContextService.getTenantIdOrThrow();
-    const classified = classifyUploadFile(file.originalname);
+    const classified = classifyUploadFile(file.originalname, file.mimetype);
     if (classified.kind !== 'image') {
       throw new MediaSlotTypeMismatchException('presentation');
     }
@@ -276,7 +276,7 @@ export class MediaService {
       throw new LinkedComboNotFoundException();
     }
 
-    const classified = classifyUploadFile(file.originalname);
+    const classified = classifyUploadFile(file.originalname, file.mimetype);
     if (classified.kind !== 'image') {
       throw new MediaSlotTypeMismatchException('presentation');
     }

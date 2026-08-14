@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsBoolean,
@@ -62,6 +63,18 @@ export class ProductMediaDto {
   @ValidateNested()
   @Type(() => ProductMediaArDto)
   ar?: ProductMediaArDto;
+}
+
+export class ServingWindowDto {
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  startMinuteOfDay!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  endMinuteOfDay!: number;
 }
 
 export class VariantOptionDto {
@@ -150,6 +163,13 @@ export class CreateProductDto {
   @Min(0)
   @Max(1439)
   servedEndMinuteOfDay?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @ValidateNested({ each: true })
+  @Type(() => ServingWindowDto)
+  servedWindows?: ServingWindowDto[];
 
   @IsOptional()
   @ValidateNested()

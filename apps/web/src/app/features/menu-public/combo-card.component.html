@@ -55,7 +55,7 @@
 
     <div class="mt-auto flex items-baseline gap-2 pt-1">
       @if (formattedFinalPrice()) {
-        <span class="text-sm font-bold text-[var(--primary-color)]">{{ formattedFinalPrice() }}</span>
+        <span class="text-sm font-bold text-red-600">{{ formattedFinalPrice() }}</span>
         <span class="text-xs text-neutral-400 line-through">{{ formattedOriginalPrice() }}</span>
       } @else {
         <span class="text-sm font-bold text-neutral-900">{{ formattedBasePrice() }}</span>

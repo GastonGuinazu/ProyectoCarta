@@ -17,14 +17,16 @@ import { Prisma, PrismaClient } from '@prisma/client';
  *
  * Orden de borrado (hijo -> padre), ver `resetPreviousSeedData`: es
  * deliberadamente explícito, tabla por tabla, en vez de confiar en un solo
- * `tenant.delete()` que dispare cascadas automáticas. Motivo: `Product.category
- * -> Category` es `onDelete: Restrict` (a diferencia de casi todo lo demás,
- * que cascadea desde `Tenant`), y en Postgres, cuando conviven cascadas y
+ * `tenant.delete()` que dispare cascadas automáticas. Motivo: conviven
+ * `onDelete: Cascade` (casi todo cuelga de `Tenant`) con FKs `Restrict`:
+ * `ComboItem.product -> Product`, `Product.category -> Category` y
+ * `Category.parent -> Category`. En Postgres, cuando conviven cascadas y
  * restricciones sobre la misma tabla en una única sentencia, el orden de
- * disparo de triggers no está garantizado — podría intentar borrar una
- * `Category` antes de que su `Product` referenciado ya esté eliminado.
- * Borrando explícitamente en el orden correcto se evita ese riesgo por
- * completo. `Allergen`/`DietaryTag`/`Plan` NUNCA se borran: son catálogo
+ * disparo de triggers no está garantizado. Borrando explícitamente en el
+ * orden correcto se evita ese riesgo por completo. El reset cubre también
+ * tablas que el seed no crea (combos, analytics, usuarios del tenant) porque
+ * el panel admin puede haber escrito filas sobre el mismo tenant demo.
+ * `Allergen`/`DietaryTag`/`Plan` NUNCA se borran: son catálogo
  * global/compartido (y de hecho `ProductAllergen.allergen`/
  * `ProductDietaryTag.dietaryTag` son `onDelete: Restrict`: ni se podrían
  * borrar mientras un producto los referencie).
@@ -124,15 +126,46 @@ async function resetPreviousSeedData(tx: TransactionClient): Promise<void> {
 
   const tenantId = existingTenant.id;
 
+  await tx.interactionEvent.deleteMany({ where: { tenantId } });
+  await tx.scanEvent.deleteMany({ where: { tenantId } });
+  await tx.aggregatedMetric.deleteMany({ where: { tenantId } });
+  await tx.qrCode.deleteMany({ where: { tenantId } });
+
+  await tx.roleAssignment.deleteMany({ where: { tenantId } });
+  await tx.user.deleteMany({ where: { tenantId } });
+
+  await tx.happyHourProductTarget.deleteMany({ where: { tenantId } });
+  await tx.happyHourCategoryTarget.deleteMany({ where: { tenantId } });
+  await tx.happyHourComboTarget.deleteMany({ where: { tenantId } });
+  await tx.happyHourBranch.deleteMany({ where: { tenantId } });
+  await tx.happyHour.deleteMany({ where: { tenantId } });
+
   await tx.promoProductTarget.deleteMany({ where: { tenantId } });
+  await tx.promoCategoryTarget.deleteMany({ where: { tenantId } });
+  await tx.promoComboTarget.deleteMany({ where: { tenantId } });
+  await tx.promoBranch.deleteMany({ where: { tenantId } });
   await tx.promo.deleteMany({ where: { tenantId } });
+
+  await tx.comboItem.deleteMany({ where: { tenantId } });
+  await tx.comboBranchAvailability.deleteMany({ where: { tenantId } });
+  await tx.combo.deleteMany({ where: { tenantId } });
+
   await tx.productMedia.deleteMany({ where: { tenantId } });
   await tx.productAllergen.deleteMany({ where: { tenantId } });
   await tx.productDietaryTag.deleteMany({ where: { tenantId } });
-  // Los Productos deben desaparecer ANTES que sus Categorías: `Product.category`
-  // es `onDelete: Restrict` (ver docstring del archivo).
+  await tx.productBranchAvailability.deleteMany({ where: { tenantId } });
+  await tx.variantOption.deleteMany({ where: { tenantId } });
+  await tx.variantGroup.deleteMany({ where: { tenantId } });
+  // ComboItem.product y Product.category son onDelete: Restrict.
   await tx.product.deleteMany({ where: { tenantId } });
+
+  await tx.categoryBranchAvailability.deleteMany({ where: { tenantId } });
+  await tx.category.updateMany({
+    where: { tenantId },
+    data: { parentId: null },
+  });
   await tx.category.deleteMany({ where: { tenantId } });
+
   await tx.processedVariant.deleteMany({ where: { tenantId } });
   await tx.mediaAsset.deleteMany({ where: { tenantId } });
   await tx.branch.deleteMany({ where: { tenantId } });

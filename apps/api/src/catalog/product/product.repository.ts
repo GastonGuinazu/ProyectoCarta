@@ -12,6 +12,11 @@ import type {
   AdminProductWriteInput,
 } from './admin-product.types';
 import type { ProductRow } from './product-row.type';
+import {
+  firstServingWindow,
+  parseServingWindowsJson,
+  type ServingWindow,
+} from './serving-windows';
 
 const ADMIN_PRODUCT_INCLUDE = {
   allergens: { select: { allergenId: true } },
@@ -113,8 +118,7 @@ export class ProductRepository {
         order: product.order,
         allergenIds: product.allergens.map((row) => row.allergenId),
         dietaryTagIds: product.dietaryTags.map((row) => row.dietaryTagId),
-        servedStartMinuteOfDay: product.servedStartMinuteOfDay,
-        servedEndMinuteOfDay: product.servedEndMinuteOfDay,
+        ...servingHoursFromProduct(product),
         primaryMediaAssetId: primary?.mediaAssetId ?? null,
         arModelMediaAssetId: arModel?.mediaAssetId ?? null,
         variantGroups: product.variantGroups.map((group) => ({
@@ -320,6 +324,10 @@ function scalarData(input: AdminProductWriteInput) {
     availableInAllBranches: input.availableInAllBranches,
     servedStartMinuteOfDay: input.servedStartMinuteOfDay,
     servedEndMinuteOfDay: input.servedEndMinuteOfDay,
+    servedWindows:
+      input.servedWindows.length > 0
+        ? input.servedWindows
+        : Prisma.JsonNull,
   };
 }
 
@@ -347,6 +355,14 @@ function scalarPatch(patch: AdminProductPatchInput) {
       : {}),
     ...(patch.servedEndMinuteOfDay !== undefined
       ? { servedEndMinuteOfDay: patch.servedEndMinuteOfDay }
+      : {}),
+    ...(patch.servedWindows !== undefined
+      ? {
+          servedWindows:
+            patch.servedWindows.length > 0
+              ? patch.servedWindows
+              : Prisma.JsonNull,
+        }
       : {}),
   };
 }
@@ -488,8 +504,7 @@ function toAdminProductRecord(product: AdminProductPayload): AdminProductRecord 
     availableInAllBranches: product.availableInAllBranches,
     allergenIds: product.allergens.map((row) => row.allergenId),
     dietaryTagIds: product.dietaryTags.map((row) => row.dietaryTagId),
-    servedStartMinuteOfDay: product.servedStartMinuteOfDay,
-    servedEndMinuteOfDay: product.servedEndMinuteOfDay,
+    ...servingHoursFromProduct(product),
     branchIds: product.branchAvailabilities.map((row) => row.branchId),
     primaryMediaAssetId: primary?.mediaAssetId ?? null,
     primaryMediaUrl: primary?.mediaAsset.originalUrl ?? null,
@@ -513,5 +528,35 @@ function toAdminProductRecord(product: AdminProductPayload): AdminProductRecord 
     })),
     createdAt: product.createdAt,
     updatedAt: product.updatedAt,
+  };
+}
+
+function servingHoursFromProduct(product: {
+  readonly servedWindows: Prisma.JsonValue | null;
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
+}): {
+  readonly servedWindows: readonly ServingWindow[];
+  readonly servedStartMinuteOfDay: number | null;
+  readonly servedEndMinuteOfDay: number | null;
+} {
+  const parsed = parseServingWindowsJson(product.servedWindows);
+  const windows =
+    parsed && parsed.length > 0
+      ? parsed
+      : product.servedStartMinuteOfDay != null &&
+          product.servedEndMinuteOfDay != null
+        ? [
+            {
+              startMinuteOfDay: product.servedStartMinuteOfDay,
+              endMinuteOfDay: product.servedEndMinuteOfDay,
+            },
+          ]
+        : [];
+  const first = firstServingWindow(windows);
+  return {
+    servedWindows: windows,
+    servedStartMinuteOfDay: first.startMinuteOfDay,
+    servedEndMinuteOfDay: first.endMinuteOfDay,
   };
 }

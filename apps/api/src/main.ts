@@ -7,6 +7,7 @@ import { AppModule } from './app.module';
 import {
   CORS_ALLOWED_HEADERS,
   CORS_ALLOWED_METHODS,
+  isDevLanWebOrigin,
 } from './core/config/env.validation';
 
 async function bootstrap() {
@@ -34,8 +35,22 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
   const origins = config.getOrThrow<readonly string[]>('PUBLIC_WEB_ORIGINS');
+  const isProduction = process.env.NODE_ENV === 'production';
   app.enableCors({
-    origin: [...origins],
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      if (
+        origins.includes(origin) ||
+        (!isProduction && isDevLanWebOrigin(origin))
+      ) {
+        callback(null, true);
+        return;
+      }
+      callback(null, false);
+    },
     methods: [...CORS_ALLOWED_METHODS],
     allowedHeaders: [...CORS_ALLOWED_HEADERS],
     credentials: true,

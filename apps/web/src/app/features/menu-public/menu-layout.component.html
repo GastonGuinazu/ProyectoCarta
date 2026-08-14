@@ -24,7 +24,7 @@
   @case ('error') {
     <div class="flex min-h-screen flex-col items-center justify-center gap-3 bg-neutral-50 px-6 text-center">
       <p class="text-lg font-bold text-neutral-900">Algo salió mal</p>
-      <p class="text-sm text-neutral-500">No pudimos cargar el menú. Revisá tu conexión e intentá de nuevo.</p>
+      <p class="text-sm text-neutral-500">{{ tenantStore.resolutionErrorMessage() }}</p>
       <button
         type="button"
         (click)="reload()"

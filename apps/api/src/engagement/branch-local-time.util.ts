@@ -31,10 +31,20 @@ const WEEKDAY_LABEL_TO_DAY_OF_WEEK: Readonly<Record<string, DayOfWeek>> = {
  * motores ICU representan la medianoche como "24" en vez de "00" al pedir
  * `hour12: false`, lo que rompería el cálculo de `minuteOfDay` a la medianoche.
  */
+const FALLBACK_TIMEZONE = 'America/Argentina/Buenos_Aires';
+
 export function resolveBranchLocalMoment(
   now: Date,
   timezone: string,
 ): BranchLocalMoment {
+  try {
+    return formatBranchLocalMoment(now, timezone);
+  } catch {
+    return formatBranchLocalMoment(now, FALLBACK_TIMEZONE);
+  }
+}
+
+function formatBranchLocalMoment(now: Date, timezone: string): BranchLocalMoment {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     weekday: 'short',

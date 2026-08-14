@@ -5,10 +5,11 @@ import {
   computed,
   inject,
   input,
+  OnDestroy,
   OnInit,
   signal,
 } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
+import { FormArray, FormBuilder, FormControl, FormGroup, ReactiveFormsModule, Validators, type AbstractControl, type ValidationErrors } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { filter, firstValueFrom, lastValueFrom, tap } from 'rxjs';
 
@@ -21,6 +22,12 @@ import {
   pickLocalizedText,
   upsertLocalizedText,
 } from '../../../utils/localized-text.utils';
+import {
+  IMAGE_UPLOAD_ACCEPT,
+  IMAGE_UPLOAD_HINT,
+  IMAGE_UPLOAD_TYPE_ERROR,
+  isAcceptedImageFile,
+} from '../../../utils/image-upload.utils';
 import { centsToMajorUnits, formatPriceFromCents, majorUnitsToCents } from '../../../utils/price.utils';
 import { minutesToTime, timeToMinutes } from '../../../utils/time-of-day.utils';
 import { AdminCatalogApiService } from './admin-catalog-api.service';
@@ -45,7 +52,6 @@ interface ModelPreview {
   readonly fileName?: string;
 }
 
-const PRESENTATION_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const IMMERSIVE_EXTENSIONS = new Set(['.glb', '.usdz']);
 
 @Component({
@@ -55,7 +61,7 @@ const IMMERSIVE_EXTENSIONS = new Set(['.glb', '.usdz']);
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-form.component.html',
 })
-export class ProductFormComponent implements OnInit {
+export class ProductFormComponent implements OnInit, OnDestroy {
   private readonly catalogApi = inject(AdminCatalogApiService);
   private readonly engagementApi = inject(AdminEngagementApiService);
   private readonly authStore = inject(AuthStore);
@@ -94,12 +100,15 @@ export class ProductFormComponent implements OnInit {
   );
 
   protected readonly isEdit = computed(() => Boolean(this.id()));
+  protected readonly pendingPresentation = signal<File | null>(null);
+  protected readonly pendingImmersive = signal<File | null>(null);
+  private pendingPresentationUrl: string | null = null;
+  private pendingImmersiveUrl: string | null = null;
+
+  protected readonly imageUploadAccept = IMAGE_UPLOAD_ACCEPT;
+  protected readonly imageUploadHint = IMAGE_UPLOAD_HINT;
   protected readonly canUpload = computed(
-    () =>
-      this.isEdit() &&
-      !this.uploading() &&
-      !this.removingSlot() &&
-      !this.loading(),
+    () => !this.uploading() && !this.removingSlot() && !this.loading(),
   );
   protected readonly pageTitle = computed(() =>
     this.isEdit() ? 'Editar producto' : 'Nuevo producto',
@@ -127,10 +136,14 @@ export class ProductFormComponent implements OnInit {
         'AVAILABLE',
         Validators.required,
       ),
-      servedStart: [''],
-      servedEnd: [''],
+      servedWindows: this.formBuilder.array<
+        FormGroup<{
+          start: FormControl<string>;
+          end: FormControl<string>;
+        }>
+      >([]),
     },
-    { validators: [servingHoursPairValidator] },
+    { validators: [servingWindowsValidator] },
   );
 
   private existingProduct: AdminProductDetail | null = null;
@@ -141,6 +154,68 @@ export class ProductFormComponent implements OnInit {
 
   ngOnInit(): void {
     void this.load();
+  }
+
+  ngOnDestroy(): void {
+    this.revokePendingUrls();
+  }
+
+  protected get servedWindows(): FormArray<
+    FormGroup<{ start: FormControl<string>; end: FormControl<string> }>
+  > {
+    return this.form.controls.servedWindows;
+  }
+
+  protected addServingWindow(): void {
+    if (this.servedWindows.length >= 6) {
+      return;
+    }
+    this.servedWindows.push(this.newServingWindowGroup());
+    this.form.markAsTouched();
+  }
+
+  protected removeServingWindow(index: number): void {
+    this.servedWindows.removeAt(index);
+    this.form.markAsTouched();
+  }
+
+  private newServingWindowGroup(
+    start = '',
+    end = '',
+  ): FormGroup<{ start: FormControl<string>; end: FormControl<string> }> {
+    return this.formBuilder.nonNullable.group({
+      start: [start],
+      end: [end],
+    });
+  }
+
+  private clearPendingSlot(slot: AdminProductMediaSlot): void {
+    if (slot === 'presentation') {
+      if (this.pendingPresentationUrl) {
+        URL.revokeObjectURL(this.pendingPresentationUrl);
+        this.pendingPresentationUrl = null;
+      }
+      this.pendingPresentation.set(null);
+      this.imagePreview.set(null);
+    } else {
+      if (this.pendingImmersiveUrl) {
+        URL.revokeObjectURL(this.pendingImmersiveUrl);
+        this.pendingImmersiveUrl = null;
+      }
+      this.pendingImmersive.set(null);
+      this.modelPreview.set(null);
+    }
+  }
+
+  private revokePendingUrls(): void {
+    if (this.pendingPresentationUrl) {
+      URL.revokeObjectURL(this.pendingPresentationUrl);
+      this.pendingPresentationUrl = null;
+    }
+    if (this.pendingImmersiveUrl) {
+      URL.revokeObjectURL(this.pendingImmersiveUrl);
+      this.pendingImmersiveUrl = null;
+    }
   }
 
   protected categoryLabel(category: AdminCategorySummary): string {
@@ -282,8 +357,14 @@ export class ProductFormComponent implements OnInit {
 
   protected async confirmRemove(): Promise<void> {
     const slot = this.pendingRemoveSlot();
+    if (!slot || this.removingSlot()) {
+      return;
+    }
+
     const productId = this.id();
-    if (!slot || !productId || this.removingSlot()) {
+    if (!productId) {
+      this.clearPendingSlot(slot);
+      this.pendingRemoveSlot.set(null);
       return;
     }
 
@@ -324,7 +405,15 @@ export class ProductFormComponent implements OnInit {
       if (productId) {
         await firstValueFrom(this.catalogApi.updateProduct(productId, payload));
       } else {
-        await firstValueFrom(this.catalogApi.createProduct(payload));
+        const created = await firstValueFrom(
+          this.catalogApi.createProduct(payload),
+        );
+        const uploadError = await this.flushPendingUploads(created.id);
+        if (uploadError) {
+          this.uploadError.set(uploadError);
+          await this.router.navigate(['/admin/catalog', created.id, 'edit']);
+          return;
+        }
       }
       await this.router.navigateByUrl('/admin/catalog');
     } catch (error: unknown) {
@@ -338,20 +427,74 @@ export class ProductFormComponent implements OnInit {
     file: File,
     slot: AdminProductMediaSlot,
   ): Promise<void> {
-    const productId = this.id();
-    if (!productId || this.uploading()) {
+    if (this.uploading()) {
       return;
     }
 
     if (!this.fileMatchesSlot(file, slot)) {
       this.uploadError.set(
         slot === 'presentation'
-          ? 'La imagen de presentación solo acepta .jpg, .png o .webp.'
+          ? IMAGE_UPLOAD_TYPE_ERROR
           : 'La experiencia inmersiva solo acepta modelos .glb o .usdz.',
       );
       return;
     }
 
+    const productId = this.id();
+    if (!productId) {
+      this.stagePendingFile(file, slot);
+      return;
+    }
+
+    await this.sendUpload(productId, file, slot);
+  }
+
+  private stagePendingFile(file: File, slot: AdminProductMediaSlot): void {
+    const url = URL.createObjectURL(file);
+    this.uploadError.set(null);
+    if (slot === 'presentation') {
+      if (this.pendingPresentationUrl) {
+        URL.revokeObjectURL(this.pendingPresentationUrl);
+      }
+      this.pendingPresentationUrl = url;
+      this.pendingPresentation.set(file);
+      this.imagePreview.set({ url });
+    } else {
+      if (this.pendingImmersiveUrl) {
+        URL.revokeObjectURL(this.pendingImmersiveUrl);
+      }
+      this.pendingImmersiveUrl = url;
+      this.pendingImmersive.set(file);
+      this.modelPreview.set({ url, fileName: file.name });
+    }
+  }
+
+  private async flushPendingUploads(productId: string): Promise<string | null> {
+    const presentation = this.pendingPresentation();
+    const immersive = this.pendingImmersive();
+    if (presentation) {
+      const error = await this.sendUpload(productId, presentation, 'presentation');
+      if (error) {
+        return error;
+      }
+    }
+    if (immersive) {
+      const error = await this.sendUpload(productId, immersive, 'immersive');
+      if (error) {
+        return error;
+      }
+    }
+    this.revokePendingUrls();
+    this.pendingPresentation.set(null);
+    this.pendingImmersive.set(null);
+    return null;
+  }
+
+  private async sendUpload(
+    productId: string,
+    file: File,
+    slot: AdminProductMediaSlot,
+  ): Promise<string | null> {
     this.uploading.set(true);
     this.uploadingSlot.set(slot);
     this.uploadProgress.set(0);
@@ -383,8 +526,11 @@ export class ProductFormComponent implements OnInit {
       } else if (body && slot === 'immersive') {
         this.modelPreview.set({ url: body.publicUrl, fileName: body.fileName });
       }
+      return null;
     } catch (error: unknown) {
-      this.uploadError.set(this.messageForUploadError(error));
+      const message = this.messageForUploadError(error);
+      this.uploadError.set(message);
+      return message;
     } finally {
       this.uploading.set(false);
       this.uploadingSlot.set(null);
@@ -419,15 +565,28 @@ export class ProductFormComponent implements OnInit {
           price: centsToMajorUnits(product.basePrice),
           categoryId: product.categoryId,
           availability: product.availability,
-          servedStart:
-            product.servedStartMinuteOfDay != null
-              ? minutesToTime(product.servedStartMinuteOfDay)
-              : '',
-          servedEnd:
-            product.servedEndMinuteOfDay != null
-              ? minutesToTime(product.servedEndMinuteOfDay)
-              : '',
         });
+        this.servedWindows.clear();
+        const windows =
+          product.servedWindows.length > 0
+            ? product.servedWindows
+            : product.servedStartMinuteOfDay != null &&
+                product.servedEndMinuteOfDay != null
+              ? [
+                  {
+                    startMinuteOfDay: product.servedStartMinuteOfDay,
+                    endMinuteOfDay: product.servedEndMinuteOfDay,
+                  },
+                ]
+              : [];
+        for (const window of windows) {
+          this.servedWindows.push(
+            this.newServingWindowGroup(
+              minutesToTime(window.startMinuteOfDay),
+              minutesToTime(window.endMinuteOfDay),
+            ),
+          );
+        }
         this.selectedAllergenIds.set(new Set(product.allergenIds ?? []));
         this.selectedDietaryTagIds.set(new Set(product.dietaryTagIds ?? []));
         if (product.media?.primaryUrl && product.media.primaryFileType === 'IMAGE') {
@@ -457,12 +616,13 @@ export class ProductFormComponent implements OnInit {
   }
 
   private fileMatchesSlot(file: File, slot: AdminProductMediaSlot): boolean {
+    if (slot === 'presentation') {
+      return isAcceptedImageFile(file);
+    }
     const name = file.name.toLowerCase();
     const lastDot = name.lastIndexOf('.');
     const extension = lastDot >= 0 ? name.slice(lastDot) : '';
-    const allowed =
-      slot === 'presentation' ? PRESENTATION_EXTENSIONS : IMMERSIVE_EXTENSIONS;
-    return allowed.has(extension);
+    return IMMERSIVE_EXTENSIONS.has(extension);
   }
 
   private toWritePayload(): AdminProductWritePayload {
@@ -486,12 +646,13 @@ export class ProductFormComponent implements OnInit {
       availability: value.availability,
       allergenIds: [...this.selectedAllergenIds()],
       dietaryTagIds: [...this.selectedDietaryTagIds()],
-      servedStartMinuteOfDay: value.servedStart
-        ? timeToMinutes(value.servedStart)
-        : null,
-      servedEndMinuteOfDay: value.servedEnd
-        ? timeToMinutes(value.servedEnd)
-        : null,
+      servedWindows: this.servedWindows.controls
+        .map((group) => group.getRawValue())
+        .filter((row) => row.start && row.end)
+        .map((row) => ({
+          startMinuteOfDay: timeToMinutes(row.start),
+          endMinuteOfDay: timeToMinutes(row.end),
+        })),
     };
   }
 
@@ -540,7 +701,7 @@ export class ProductFormComponent implements OnInit {
       const code = extractApiErrorCode(error.error);
       switch (code) {
         case 'UNSUPPORTED_MEDIA_TYPE':
-          return 'Revisá el tipo de archivo: imagen (.jpg, .png, .webp) o modelo 3D (.glb, .usdz).';
+          return 'Revisá el tipo de archivo: imagen (.jpg, .jfif, .png, .webp) o modelo 3D (.glb, .usdz). Las fotos HEIC del iPhone hay que guardarlas como JPG.';
         case 'MEDIA_SLOT_TYPE_MISMATCH':
           return (
             extractApiErrorMessage(error.error) ??
@@ -594,19 +755,25 @@ export class ProductFormComponent implements OnInit {
   }
 }
 
-function servingHoursPairValidator(
+function servingWindowsValidator(
   control: AbstractControl,
 ): ValidationErrors | null {
-  const start = String(control.get('servedStart')?.value ?? '').trim();
-  const end = String(control.get('servedEnd')?.value ?? '').trim();
-  if (!start && !end) {
+  const windows = control.get('servedWindows');
+  if (!(windows instanceof FormArray)) {
     return null;
   }
-  if (!start || !end) {
-    return { servingHoursPair: true };
-  }
-  if (start === end) {
-    return { servingHoursSame: true };
+  for (const group of windows.controls) {
+    const start = String(group.get('start')?.value ?? '').trim();
+    const end = String(group.get('end')?.value ?? '').trim();
+    if (!start && !end) {
+      continue;
+    }
+    if (!start || !end) {
+      return { servingHoursPair: true };
+    }
+    if (start === end) {
+      return { servingHoursSame: true };
+    }
   }
   return null;
 }

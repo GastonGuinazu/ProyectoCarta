@@ -1,4 +1,4 @@
-import { parseCorsOrigins, usesSupabaseTransactionPooler, validateEnv } from './env.validation';
+import { parseCorsOrigins, isDevLanWebOrigin, usesSupabaseTransactionPooler, validateEnv } from './env.validation';
 
 const DEV_ENV = {
   NODE_ENV: 'development',
@@ -46,6 +46,22 @@ describe('parseCorsOrigins', () => {
     expect(parseCorsOrigins('http://localhost:4200', false)).toEqual([
       'http://localhost:4200',
     ]);
+  });
+});
+
+describe('isDevLanWebOrigin', () => {
+  it('accepts the phone origin on the LAN Angular port', () => {
+    expect(isDevLanWebOrigin('http://192.168.88.20:4200')).toBe(true);
+    expect(isDevLanWebOrigin('http://10.0.0.5:4200')).toBe(true);
+    expect(isDevLanWebOrigin('http://172.16.1.2:4200')).toBe(true);
+  });
+
+  it('rejects production-like and non-dev ports', () => {
+    expect(isDevLanWebOrigin('https://proyecto-carta-web.vercel.app')).toBe(
+      false,
+    );
+    expect(isDevLanWebOrigin('http://192.168.88.20:3000')).toBe(false);
+    expect(isDevLanWebOrigin('http://8.8.8.8:4200')).toBe(false);
   });
 });
 
